@@ -31,7 +31,7 @@ and D/K (KA).
 
 1. **The Summoning.** Play 18 drum notes. Your accuracy sets **Drum Power**,
    from ×1 to ×10 on a convex curve, and it applies to every free-spin win. You
-   can also tap "Let the drummers play" to auto-play at average skill.
+   can also tap AUTO-PLAY to let the drummers play at average skill.
 2. **Drum Storm.** Wilds that land **lock in place** and gain +1× each spin
    (max ×2). A way uses its highest wild multiplier. 3+ 雷 add 5 spins.
 3. **Raijin's Crescendo.** Every new wild and every 雷 that lands charges
@@ -165,7 +165,9 @@ npm run artifact -- <out-dir>
 ```
 
 This writes `taiko-thunder.html` with the CSS inlined, plus the script chunks
-in `assets/`. Publish the page with those files alongside it. The chunks stay
+in `assets/`. The artifact viewer enforces a Content Security Policy without
+`unsafe-eval`, so the stage imports `pixi.js/unsafe-eval` to replace Pixi's
+generated code with CSP-safe versions. Publish the page with those files alongside it. The chunks stay
 separate because a single merged bundle breaks Pixi's lazy-loaded renderer
 modules.
 

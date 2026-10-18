@@ -1,4 +1,6 @@
 import { Application, Container, Graphics, Sprite } from 'pixi.js';
+// The artifact viewer's CSP forbids eval; this swaps Pixi's generated code for CSP-safe versions.
+import 'pixi.js/unsafe-eval';
 import { GlowFilter } from 'pixi-filters';
 import gsap from 'gsap';
 import { beat } from './beat';
@@ -107,9 +109,6 @@ export class Stage {
     }
     this.shaker.addChild(this.fx, this.overlay);
     this.app.stage.addChild(this.floor, this.cabinet);
-    // Let taps anywhere reach the root (used to skip celebrations and wake the attract loop).
-    this.app.stage.eventMode = 'static';
-    this.app.stage.hitArea = this.app.screen;
     this.layout();
     window.addEventListener('resize', () => this.layout());
     this.app.ticker.add((t) => this.tick(t.deltaMS / 1000));

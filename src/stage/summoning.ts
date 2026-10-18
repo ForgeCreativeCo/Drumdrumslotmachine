@@ -179,8 +179,8 @@ export function playSummoning(stage: Stage): Promise<RhythmResult> {
 
     const begin = new PlaqueButton('BEGIN', 280, () => start(false));
     begin.x = -170;
-    const autoBtn = new PlaqueButton('LET THE DRUMMERS PLAY', 400, () => start(true), false);
-    autoBtn.x = 190;
+    const autoBtn = new PlaqueButton('AUTO-PLAY', 280, () => start(true), false);
+    autoBtn.x = 170;
     actions.addChild(begin, autoBtn);
     judge.text = 'Strike DON or press BEGIN';
     judge.style.fill = '#e8dcc0';

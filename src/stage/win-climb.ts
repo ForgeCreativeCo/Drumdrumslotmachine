@@ -163,12 +163,17 @@ export function winClimb(stage: Stage, amount: number, bet: number, fmt: (n: num
     const close = () => {
       stage.app.ticker.remove(pour);
       window.removeEventListener('keydown', onKey);
-      stage.app.stage.off('pointerdown', onTap);
+      window.removeEventListener('pointerdown', onTap);
       gsap.to(root, {
         alpha: 0,
         duration: 0.45,
         onComplete: () => {
-          gsap.killTweensOf([rays, skipHint]);
+          // Coins may still be falling; stop every tween before the sprites go away.
+          for (const c of pile.children) {
+            gsap.killTweensOf(c);
+            gsap.killTweensOf(c.scale);
+          }
+          gsap.killTweensOf([rays, skipHint, b, dim, jp.scale, label.scale, value.scale, b.scale]);
           root.destroy({ children: true });
           resolve();
         },
@@ -188,6 +193,7 @@ export function winClimb(stage: Stage, amount: number, bet: number, fmt: (n: num
     };
     const onTap = () => skip();
     window.addEventListener('keydown', onKey);
-    stage.app.stage.on('pointerdown', onTap);
+    // A tap anywhere skips; listening on the window keeps the cabinet's buttons hit-testable.
+    window.addEventListener('pointerdown', onTap);
   });
 }
