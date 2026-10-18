@@ -158,6 +158,17 @@ and shrine. Wide 16:9 paintings work best.
 - If the first seconds render below 30 fps, the game drops bloom and renders
   at 1× resolution.
 
+## Deploying to GitHub Pages
+
+`.github/workflows/deploy.yml` runs the tests, builds the game, and publishes
+`dist/` to GitHub Pages on every push to `main`. You can also start it by hand
+from the Actions tab. One-time setup: in the repository's **Settings → Pages →
+Build and deployment**, set **Source** to **GitHub Actions**. Pages can't
+serve the repository's files directly, because the root `index.html` loads
+the unbuilt `src/main.ts`. The site is served from
+`https://<owner>.github.io/<repo>/`, and the relative `base` in
+`vite.config.ts` lets the build and its service worker work under that path.
+
 ## Installing as an app (PWA)
 
 The production build (`npm run build`) is an installable Progressive Web App.
