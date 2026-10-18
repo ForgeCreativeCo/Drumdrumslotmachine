@@ -409,6 +409,7 @@ export class TopScreen extends Container {
 
   setStorm(on: boolean): void {
     this.storm = on;
+    this.weather.clear();
     gsap.to(this.skyStorm, { alpha: on ? 1 : 0, duration: 1.2 });
     this.ridges.forEach((r, i) => {
       const from = { v: 0 };

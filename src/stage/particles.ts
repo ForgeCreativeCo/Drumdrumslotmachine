@@ -59,6 +59,16 @@ export class Particles extends Container {
     });
   }
 
+  /** Remove every live particle at once. */
+  clear(): void {
+    for (const p of this.live) {
+      p.s.visible = false;
+      this.removeChild(p.s);
+      this.pool.push(p.s);
+    }
+    this.live = [];
+  }
+
   get count(): number {
     return this.live.length;
   }

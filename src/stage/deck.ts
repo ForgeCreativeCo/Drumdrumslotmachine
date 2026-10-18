@@ -3,7 +3,7 @@ import gsap from 'gsap';
 import { beat } from './beat';
 import { FONT, makeCanvas } from './paint';
 import { tex } from './textures';
-import { BRASS, BrassButton, GOLD, inset, labelText, linear, moneyText } from './ui';
+import { BRASS, BrassButton, GOLD, bachi, inset, labelText, linear, moneyText } from './ui';
 
 export const DECK_H = 400;
 const W = 1080;
@@ -40,13 +40,6 @@ function kobanTexture(): Texture {
     ctx.stroke();
   }
   return Texture.from(c);
-}
-
-function bachi(): Graphics {
-  return new Graphics()
-    .roundRect(-9, -125, 18, 250, 9)
-    .fill(linear([[0, '#e8c48a'], [0.5, '#b9864a'], [1, '#6a4420']], false))
-    .stroke({ width: 2, color: 0x3a2008 });
 }
 
 /** The button deck: credit and win meters, bet stack, the big drum and the brass buttons. */

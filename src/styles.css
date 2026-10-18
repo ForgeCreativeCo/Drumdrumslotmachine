@@ -630,6 +630,12 @@ button:focus-visible {
   height: 52px;
 }
 
+.pay-sym img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .pay-name small {
   display: block;
   color: var(--ink-dim);

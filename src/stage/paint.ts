@@ -4,6 +4,7 @@
  */
 import { SYMBOLS, type SymbolId } from '../math/symbols';
 import { mulberry32 } from '../math/rng';
+import { paintDragon, paintFan, paintKoi, paintOni } from './illustrations';
 
 export const FONT = {
   kanji: '"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif',
@@ -53,7 +54,20 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 
 // ---- Symbols ----------------------------------------------------------------
 
-const HIGH: SymbolId[] = ['ONI', 'RYU', 'KOI', 'OGI'];
+const HIGH = ['ONI', 'RYU', 'KOI', 'OGI'] as const;
+const ILLUSTRATED: Record<(typeof HIGH)[number], (ctx: CanvasRenderingContext2D) => void> = {
+  ONI: paintOni,
+  RYU: paintDragon,
+  KOI: paintKoi,
+  OGI: paintFan,
+};
+/** Scale and offset that keep each illustration inside its cell. */
+const FIT: Record<(typeof HIGH)[number], [number, number, number]> = {
+  ONI: [1, 0, 0],
+  RYU: [0.93, -4, 0],
+  KOI: [0.92, -10, 0],
+  OGI: [0.98, 0, -6],
+};
 
 /** Wood tones for the carved low-symbol plaques. */
 const WOODS: Partial<Record<SymbolId, [string, string, string]>> = {
@@ -81,64 +95,9 @@ function woodGrain(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.restore();
 }
 
-function paintHigh(ctx: CanvasRenderingContext2D, id: SymbolId, s: number): void {
-  const [light, dark] = SYMBOLS[id].colors;
-  const m = s * 0.05;
-  // Jewel body.
-  const body = ctx.createRadialGradient(s * 0.42, s * 0.3, s * 0.05, s / 2, s / 2, s * 0.7);
-  body.addColorStop(0, light);
-  body.addColorStop(0.55, dark);
-  body.addColorStop(1, '#0a0203');
-  roundRect(ctx, m, m, s - 2 * m, s - 2 * m, s * 0.16);
-  ctx.fillStyle = body;
-  ctx.fill();
-  // Gold double frame.
-  ctx.lineWidth = s * 0.045;
-  ctx.strokeStyle = goldGradient(ctx, m, s - m);
-  ctx.stroke();
-  roundRect(ctx, m * 2.6, m * 2.6, s - 5.2 * m, s - 5.2 * m, s * 0.11);
-  ctx.lineWidth = s * 0.012;
-  ctx.strokeStyle = 'rgba(255, 230, 160, .55)';
-  ctx.stroke();
-  // Corner studs.
-  for (const [cx, cy] of [
-    [m * 3.2, m * 3.2],
-    [s - m * 3.2, m * 3.2],
-    [m * 3.2, s - m * 3.2],
-    [s - m * 3.2, s - m * 3.2],
-  ]) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, s * 0.022, 0, Math.PI * 2);
-    ctx.fillStyle = goldGradient(ctx, cy - 6, cy + 6);
-    ctx.fill();
-  }
-  // Kanji: gold leaf with a dark outline and an inner glow.
-  ctx.font = `900 ${s * 0.6}px ${FONT.kanji}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  const k = SYMBOLS[id].kanji;
-  ctx.save();
-  ctx.shadowColor = light;
-  ctx.shadowBlur = s * 0.12;
-  ctx.lineWidth = s * 0.05;
-  ctx.strokeStyle = '#1a0502';
-  ctx.lineJoin = 'round';
-  ctx.strokeText(k, s / 2, s * 0.53);
-  ctx.restore();
-  ctx.fillStyle = goldGradient(ctx, s * 0.22, s * 0.84);
-  ctx.fillText(k, s / 2, s * 0.53);
-  // Glass highlight.
-  const gl = ctx.createLinearGradient(0, m, 0, s * 0.5);
-  gl.addColorStop(0, 'rgba(255,255,255,.32)');
-  gl.addColorStop(1, 'rgba(255,255,255,0)');
-  roundRect(ctx, m * 2, m * 2, s - 4 * m, s * 0.38, s * 0.13);
-  ctx.fillStyle = gl;
-  ctx.fill();
-}
-
 function paintLow(ctx: CanvasRenderingContext2D, id: SymbolId, s: number): void {
   const [light, mid, dark] = WOODS[id]!;
-  const m = s * 0.11;
+  const m = s * 0.13;
   const g = ctx.createLinearGradient(0, m, 0, s - m);
   g.addColorStop(0, light);
   g.addColorStop(0.6, mid);
@@ -260,7 +219,17 @@ export function paintSymbol(id: SymbolId, s = 256): HTMLCanvasElement {
   const [c, ctx] = makeCanvas(s);
   if (id === 'WILD') paintWild(ctx, s);
   else if (id === 'SCATTER') paintScatter(ctx, s);
-  else if (HIGH.includes(id)) paintHigh(ctx, id, s);
+  else if ((HIGH as readonly SymbolId[]).includes(id)) {
+    const key = id as (typeof HIGH)[number];
+    const [k, dx, dy] = FIT[key];
+    ctx.save();
+    ctx.scale(s / 256, s / 256);
+    ctx.translate(128 + dx, 128 + dy);
+    ctx.scale(k, k);
+    ctx.translate(-128, -128);
+    ILLUSTRATED[key](ctx);
+    ctx.restore();
+  }
   else paintLow(ctx, id, s);
   return c;
 }

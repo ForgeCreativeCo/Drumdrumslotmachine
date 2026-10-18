@@ -79,7 +79,23 @@ for timing.
   coin stack for the bet, and the big drum, which bachi strike when you spin.
 - One beat clock (`src/stage/beat.ts`) drives the lantern sway, the LED strips
   and the drum pulses.
-- All art is code-built with canvas painters (`src/stage/paint.ts`).
+- All art is code-built with canvas painters. The high symbols are painted
+  illustrations (`src/stage/illustrations.ts`): an oni mask, a dragon coiled
+  round a flaming pearl, a leaping koi and a war fan, each on a gold-rimmed
+  roundel. The low symbols are carved wood plaques.
+- Winning symbols lift out of the reels as animated actors
+  (`src/stage/symbol-fx.ts`):
+  - the Oni roars with burning eyes;
+  - the Dragon sways and its pearl glows;
+  - the Koi leaps and splashes;
+  - the Fan flutters and throws petals;
+  - the Wild is drummed by bachi;
+  - the Thunder spins and crackles.
+- Lightning joins each winning symbol to every winning symbol on the next
+  reel, drawing the ways themselves. Wins smaller than the bet are marked
+  quietly rather than celebrated.
+- When a Wild lands, bachi strike it and a ripple runs across the reels.
+- At rest, scatters crackle and high symbols catch an occasional glint.
 
 ### Adding painted backdrops
 

@@ -5,9 +5,9 @@ import { FreeSpinSession, JACKPOTS, STICKY_MULT_CAP, playBaseSpin, type SpinOutc
 import { RHYTHM } from './math/rhythm';
 import { cryptoRng } from './math/rng';
 import { PAYING_SYMBOLS, PAYTABLE, SCATTER_PAY, SYMBOLS } from './math/symbols';
-import { symbolSvg } from './ui/art';
 import { Fx } from './ui/fx';
 import { playSummoning } from './ui/rhythm-ui';
+import { paintSymbol } from './stage/paint';
 import { Stage } from './stage/stage';
 
 const BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50];
@@ -131,6 +131,8 @@ const stage = await Stage.create($('#stage'), {
   info: onInfo,
 });
 const reels = stage.main.reels;
+// Dev-only handle for poking the stage from the console or test scripts.
+if (import.meta.env.DEV) (window as unknown as { __taiko: unknown }).__taiko = { stage, reels };
 
 function updateHud(): void {
   stage.deck.setBalance(fmt(state.balance));
@@ -227,27 +229,42 @@ function describeWin(w: WayWin, amount: number): string {
   return `${s.kanji} ${s.name} · ${w.reels} reels · ${w.ways} way${w.ways > 1 ? 's' : ''}${mult} · ${fmt(amount)}`;
 }
 
-/** Highlight every win, then cycle through each one until the next spin. */
-function showWins(wins: WayWin[], scatters: [number, number][], scatterWin: number, mult: number): void {
+/**
+ * Highlight every win, then cycle through each one until the next spin.
+ * Wins smaller than the bet are marked quietly rather than celebrated.
+ */
+function showWins(wins: WayWin[], scatters: [number, number][], scatterWin: number, mult: number, total: number): void {
   stopWinCycle();
-  const items: { positions: [number, number][]; text: string }[] = wins.map((w) => ({
+  const quiet = total < 1;
+  const items: { positions: [number, number][]; text: string; way: boolean }[] = wins.map((w) => ({
     positions: w.positions,
     text: describeWin(w, w.pay * mult * bet()),
+    way: true,
   }));
   if (scatterWin > 0) {
-    items.push({ positions: scatters, text: `雷 ${scatters.length} Thunder scatters · ${fmt(scatterWin * bet())}` });
+    items.push({ positions: scatters, text: `雷 ${scatters.length} Thunder scatters · ${fmt(scatterWin * bet())}`, way: false });
   }
   if (!items.length) return;
   const all = items.flatMap((i) => i.positions);
-  reels.highlight(all);
+  reels.highlight(all, { bolts: items[0].way ? items[0].positions : undefined, quiet });
   say(items.length > 1 ? `${items.length} wins!` : items[0].text);
   if (items.length < 2 && !state.inBonus) return;
   let i = 0;
   cycleTimer = window.setInterval(() => {
     const it = items[i++ % items.length];
-    reels.highlight(it.positions);
+    reels.highlight(it.positions, { bolts: it.way ? it.positions : undefined, quiet });
     stage.main.setInfo(it.text);
-  }, 1400);
+  }, 1600);
+}
+
+const symbolImages = new Map<string, string>();
+function symbolImg(id: keyof typeof SYMBOLS): string {
+  let url = symbolImages.get(id);
+  if (!url) {
+    url = paintSymbol(id, 128).toDataURL();
+    symbolImages.set(id, url);
+  }
+  return `<img src="${url}" alt="">`;
 }
 
 async function bigWin(amount: number): Promise<void> {
@@ -321,6 +338,10 @@ async function spin(): Promise<void> {
         stage.main.release();
         stage.anticipate(false);
       }
+      if (o.grid[r].includes('WILD')) {
+        audio.don(undefined, 1);
+        audio.ka(undefined, 0.8);
+      }
       const sc = o.scatters.filter(([sr]) => sr === r);
       if (sc.length) {
         landed += sc.length;
@@ -342,7 +363,7 @@ async function spin(): Promise<void> {
 
   const win = o.totalWin * bet();
   if (win > 0) {
-    showWins(o.wins, o.scatters, o.scatterWin, 1);
+    showWins(o.wins, o.scatters, o.scatterWin, 1, o.totalWin);
     audio.winSting(o.totalWin >= 5 ? 2 : o.totalWin >= 1 ? 1 : 0);
     if (o.totalWin >= 1) stage.celebrate(1.6);
     setWin(win);
@@ -522,7 +543,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
     stage.top.setCharges(charges);
 
     if (fs.totalWin > 0) {
-      showWins(fs.wins, [], 0, session.multiplier);
+      showWins(fs.wins, [], 0, session.multiplier, fs.totalWin);
       audio.winSting(fs.totalWin >= 5 ? 2 : 1);
       if (fs.totalWin >= 1) stage.celebrate(1.4);
       setWin(fs.totalWin * bet());
@@ -645,15 +666,15 @@ async function playCrescendo(charges: number, jackpot: string | null, award: num
 function showInfo(): void {
   const rows = PAYING_SYMBOLS.map((id) => {
     const p = PAYTABLE[id];
-    return `<div class="pay-row"><div class="pay-sym">${symbolSvg(id)}</div><div class="pay-name">${SYMBOLS[id].name}</div>
+    return `<div class="pay-row"><div class="pay-sym">${symbolImg(id)}</div><div class="pay-name">${SYMBOLS[id].name}</div>
       <div class="pay-vals"><span>5× ${fmt(p[5] * bet())}</span><span>4× ${fmt(p[4] * bet())}</span><span>3× ${fmt(p[3] * bet())}</span></div></div>`;
   }).join('');
   void modalChoice(
     `<h2>How to play</h2>
      <p>243 ways: match symbols on adjacent reels from the left. Wins are shown for your current bet of ${fmt(bet())}.</p>
      <div class="pay-specials">
-       <div class="pay-row"><div class="pay-sym">${symbolSvg('WILD')}</div><div class="pay-name">Taiko Wild<small>Substitutes for all symbols except 雷. Reels 2 to 5.</small></div></div>
-       <div class="pay-row"><div class="pay-sym">${symbolSvg('SCATTER')}</div><div class="pay-name">Raijin Thunder<small>3/4/5 anywhere pay ${SCATTER_PAY[3]}×/${SCATTER_PAY[4]}×/${SCATTER_PAY[5]}× bet and start the Festival.</small></div></div>
+       <div class="pay-row"><div class="pay-sym">${symbolImg('WILD')}</div><div class="pay-name">Taiko Wild<small>Substitutes for all symbols except 雷. Reels 2 to 5.</small></div></div>
+       <div class="pay-row"><div class="pay-sym">${symbolImg('SCATTER')}</div><div class="pay-name">Raijin Thunder<small>3/4/5 anywhere pay ${SCATTER_PAY[3]}×/${SCATTER_PAY[4]}×/${SCATTER_PAY[5]}× bet and start the Festival.</small></div></div>
      </div>
      <div class="paytable">${rows}</div>
      <h3>Festival of a Thousand Drums</h3>

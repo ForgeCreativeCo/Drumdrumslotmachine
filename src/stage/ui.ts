@@ -217,3 +217,11 @@ export class LedStrip extends Container {
     });
   }
 }
+
+/** A drumstick, 250 units long, centred on its middle. */
+export function bachi(): Graphics {
+  return new Graphics()
+    .roundRect(-9, -125, 18, 250, 9)
+    .fill(linear([[0, '#e8c48a'], [0.5, '#b9864a'], [1, '#6a4420']], false))
+    .stroke({ width: 2, color: 0x3a2008 });
+}

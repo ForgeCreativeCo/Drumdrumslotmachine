@@ -177,6 +177,7 @@ export class MainScreen extends Container {
   }
 
   setStorm(on: boolean): void {
+    this.reels.setStorm(on);
     this.sideDrums.forEach((d) => (d.texture = on ? tex().drumStorm : tex().drumLacquer));
     this.pattern.tint = on ? 0x6f9cff : 0xffffff;
     this.wall.tint = on ? 0x5a6aa8 : 0xffffff;
