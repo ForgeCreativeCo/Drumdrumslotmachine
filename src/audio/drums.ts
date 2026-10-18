@@ -128,9 +128,129 @@ export class DrumAudio {
     this.tone(t, 'sine', 60, 35, 0.6 * vel, 1.2);
   }
 
+  /** Pachislot lever pull ("gako"): a spring-loaded thunk and a latch click. */
+  lever(at?: number): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    this.tone(t, 'sine', 160, 70, 0.45, 0.09);
+    this.noiseBurst(t, 900, 1.2, 0.35, 0.05, 'lowpass');
+    this.noiseBurst(t + 0.045, 4200, 4, 0.4, 0.025);
+    this.tone(t + 0.045, 'square', 1500, 1300, 0.05, 0.02);
+  }
+
+  /** Stop-button clack ("kachi"), a step higher on each reel, under a soft drum. */
   reelStop(index: number): void {
     if (!this.ctx) return;
-    this.don(undefined, 0.35 + index * 0.04);
+    const t = this.ctx.currentTime;
+    this.noiseBurst(t, 2600 + index * 300, 5, 0.45, 0.03);
+    this.tone(t, 'square', 700 + index * 90, 600 + index * 80, 0.07, 0.03);
+    this.don(t, 0.3 + index * 0.04);
+  }
+
+  /**
+   * キュイン ("kyuin"): the premium sound that confirms a bonus. A detuned stack
+   * sweeps up an octave and a half, then shimmers with a fast vibrato.
+   */
+  kyuin(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = at ?? ctx.currentTime;
+    const sweep = 0.14;
+    const end = t + 1.4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16 * vel, t + 0.02);
+    g.gain.setValueAtTime(0.16 * vel, t + 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(2500, t);
+    f.frequency.exponentialRampToValueAtTime(9000, t + sweep);
+    f.frequency.exponentialRampToValueAtTime(3500, end);
+    f.connect(g).connect(this.master);
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 15;
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(0, t);
+    depth.gain.setValueAtTime(0, t + sweep);
+    depth.gain.linearRampToValueAtTime(0.025, t + sweep + 0.1);
+    vib.connect(depth);
+    for (const [type, cents, mul] of [['square', -9, 1], ['sawtooth', 9, 1], ['sine', 0, 2]] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.detune.value = cents;
+      o.frequency.setValueAtTime(700 * mul, t);
+      o.frequency.exponentialRampToValueAtTime(2350 * mul, t + sweep);
+      o.frequency.exponentialRampToValueAtTime(2200 * mul, t + sweep + 0.08);
+      // Vibrato as a ratio of the pitch, so it sounds the same on every layer.
+      const v = ctx.createGain();
+      v.gain.value = 2200 * mul;
+      depth.connect(v).connect(o.frequency);
+      o.connect(f);
+      o.start(t);
+      o.stop(end + 0.05);
+    }
+    vib.start(t);
+    vib.stop(end + 0.05);
+    this.kane(t + sweep, 0.9 * vel);
+  }
+
+  /**
+   * Freeze (フリーズ): the groove stops dead, the cabinet powers down with a
+   * falling whine, then silence. Returns how long it lasts in seconds.
+   */
+  freeze(): number {
+    this.stopLoop();
+    if (!this.ctx) return 1.6;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const fall = 0.9;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(5000, t);
+    f.frequency.exponentialRampToValueAtTime(120, t + fall);
+    f.connect(this.env(t, 0.22, 0.005, fall));
+    for (const cents of [-12, 12]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.detune.value = cents;
+      o.frequency.setValueAtTime(330, t);
+      o.frequency.exponentialRampToValueAtTime(28, t + fall);
+      o.connect(f);
+      o.start(t);
+      o.stop(t + fall + 0.05);
+    }
+    this.tone(t, 'sine', 90, 30, 0.5, fall);
+    this.noiseBurst(t, 6000, 0.7, 0.3, 0.06, 'highpass');
+    return 1.6;
+  }
+
+  /** Chance-up rise: a swelling, climbing whine under an anticipation roll. */
+  chanceRise(duration = 1.4): void {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const end = t + duration;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.1, end - 0.05);
+    g.gain.linearRampToValueAtTime(0, end);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.Q.value = 6;
+    f.frequency.setValueAtTime(400, t);
+    f.frequency.exponentialRampToValueAtTime(5000, end);
+    f.connect(g).connect(this.master);
+    for (const cents of [-10, 10]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.detune.value = cents;
+      o.frequency.setValueAtTime(IN_SCALE[0] / 2, t);
+      o.frequency.exponentialRampToValueAtTime(IN_SCALE[5], end);
+      o.connect(f);
+      o.start(t);
+      o.stop(end + 0.02);
+    }
   }
 
   /** Accelerating drum roll, used for anticipation. Returns its length in seconds. */

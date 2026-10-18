@@ -285,7 +285,8 @@ async function spin(): Promise<void> {
   state.balance -= bet();
   setWin(0);
   say('ドン！');
-  audio.don(undefined, 0.9);
+  audio.lever();
+  audio.don(undefined, 0.7);
   updateHud();
   save();
 
@@ -295,6 +296,7 @@ async function spin(): Promise<void> {
 
   let landed = 0;
   let anticipated = -1;
+  let confirmed = false;
   await reels.spin(o.grid, {
     turbo: state.turbo,
     free: false,
@@ -312,7 +314,10 @@ async function spin(): Promise<void> {
       const sc = o.scatters.filter(([sr]) => sr === r);
       if (sc.length) {
         landed += sc.length;
-        audio.kane();
+        if (landed >= 3 && !confirmed) {
+          confirmed = true;
+          audio.kyuin();
+        } else audio.kane();
         reels.pulse(sc, 'thunder');
         stage.top.lightDrums(landed);
         stage.top.strike(0.35 + landed * 0.15);
@@ -320,7 +325,8 @@ async function spin(): Promise<void> {
     },
     onAnticipate: (r) => {
       anticipated = r;
-      audio.roll(state.turbo ? 1.1 : 1.9);
+      const roll = audio.roll(state.turbo ? 1.1 : 1.9);
+      audio.chanceRise(roll);
       stage.main.push(r);
       stage.anticipate(true);
     },
@@ -407,6 +413,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   state.inBonus = true;
   updateHud();
   stopWinCycle();
+  await wait(audio.freeze() * 1000);
   say('Raijin awakens!');
 
   await stormArrives(o);
@@ -445,6 +452,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
 
     const sparks: Promise<void>[] = [];
     const shown = fs.sticky.filter((w) => !fs.newWilds.some((n) => n.reel === w.reel && n.row === w.row));
+    audio.lever();
     await reels.spin(fs.grid, {
       turbo: state.turbo,
       free: true,

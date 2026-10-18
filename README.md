@@ -182,4 +182,6 @@ animation timing. The maths in `src/math/` has no dependencies.
   drawn by the stage.
 - All sound (taiko, rim clicks, shime, kane, gong, thunder, koto stings and the
   festival groove) is synthesized live with Web Audio, so there are no audio
-  assets.
+  assets. That includes the pachislot cues: the lever pull, stop-button clacks,
+  the chance-up rise under anticipation, the キュイン (kyuin) when the third 雷
+  lands, and the freeze that cuts the music before the Festival.
