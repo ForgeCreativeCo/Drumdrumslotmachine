@@ -1,19 +1,22 @@
 /**
  * Every sound in the game is synthesized here with Web Audio, so there are no
- * audio assets to load or license. The music bed and stings aim at the modern
- * "Japanese casino" sound: sub-heavy drums, koto and shamisen lines over a
- * bass and pad, and harp-like shimmers on wins.
+ * audio assets to load or license. The base game aims at traditional Japanese
+ * ensemble music (a breathy flute over koto patterns, light bass, hirajoshi
+ * scale); the bonus at the cinematic "Japanese casino" sound (sub-heavy drums,
+ * a shamisen ostinato over bass and pad). Wins add harp-like shimmers.
  */
 
-// In-scale (miyako-bushi) pentatonic on D, for koto-style stings.
+// In-scale (miyako-bushi) pentatonic on D: dark, for the Drum Storm.
 const IN_SCALE = [293.66, 311.13, 392.0, 440.0, 466.16, 587.33, 622.25, 783.99, 880.0, 932.33];
+// Hirajoshi on D (D E F A B♭): brighter, for the base game.
+const HIRAJOSHI = [293.66, 329.63, 349.23, 440.0, 466.16, 587.33, 659.25, 698.46, 880.0, 932.33];
 
 // Bass roots, low enough to sit under the drums.
 const D2 = 73.42;
 const EB2 = 77.78;
-const G1 = 49.0;
 const A1 = 55.0;
 const BB1 = 58.27;
+const F2 = 87.31;
 
 const _ = -1;
 
@@ -26,6 +29,8 @@ export class DrumAudio {
   private out!: AudioNode;
   private noise!: AudioBuffer;
   private loopTimer: number | null = null;
+  /** Scale of the running groove; stings and shimmers use it so they never clash. */
+  private scale = HIRAJOSHI;
   muted = false;
 
   /** Must be called from a user gesture before anything is audible. */
@@ -180,7 +185,7 @@ export class DrumAudio {
   shimmer(at?: number, up = true, notes = 12, vel = 1): void {
     if (!this.ctx) return;
     const t = at ?? this.ctx.currentTime;
-    const all = [...IN_SCALE, ...IN_SCALE.map((f) => f * 2)];
+    const all = [...this.scale, ...this.scale.map((f) => f * 2)];
     const run = up ? all.slice(-notes) : all.slice(-notes).reverse();
     run.forEach((f, i) => {
       const at2 = t + i * 0.028;
@@ -374,6 +379,55 @@ export class DrumAudio {
     this.noiseBurst(at, 5000, 2, 0.12 * vel, 0.012);
   }
 
+  /**
+   * Shinobue-style flute: scoops up into the note, breath noise on top, and a
+   * vibrato that blooms partway through a held note.
+   */
+  flute(at: number, freq: number, len: number, vel = 1): void {
+    const ctx = this.ctx!;
+    const end = at + len;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.085 * vel, at + 0.06);
+    g.gain.setValueAtTime(0.085 * vel, end - 0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, end);
+    g.connect(this.out);
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 5.5;
+    const depth = ctx.createGain();
+    depth.gain.setValueAtTime(0, at);
+    depth.gain.setValueAtTime(0, at + len * 0.35);
+    depth.gain.linearRampToValueAtTime(freq * 0.012, at + len * 0.7);
+    vib.connect(depth);
+    for (const [type, mul, amp] of [['sine', 1, 1], ['triangle', 1, 0.35], ['sine', 2, 0.12]] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freq * mul * 0.94, at);
+      o.frequency.exponentialRampToValueAtTime(freq * mul, at + 0.08);
+      depth.connect(o.frequency);
+      const a = ctx.createGain();
+      a.gain.value = amp;
+      o.connect(a).connect(g);
+      o.start(at);
+      o.stop(end + 0.05);
+    }
+    vib.start(at);
+    vib.stop(end + 0.05);
+    const breath = ctx.createBufferSource();
+    breath.buffer = this.noise;
+    breath.loop = true;
+    const bf = ctx.createBiquadFilter();
+    bf.type = 'bandpass';
+    bf.frequency.value = freq * 2;
+    bf.Q.value = 1.5;
+    const bg = ctx.createGain();
+    bg.gain.setValueAtTime(0.5, at);
+    bg.gain.exponentialRampToValueAtTime(0.15, at + 0.2);
+    breath.connect(bf).connect(bg).connect(g);
+    breath.start(at, Math.random() * 0.5);
+    breath.stop(end + 0.05);
+  }
+
   /** Sub bass note with a soft upper harmonic so it still reads on phone speakers. */
   bass(at: number, freq: number, vel = 1, len = 0.4): void {
     this.tone(at, 'sine', freq, freq, 0.45 * vel, len, 0.008);
@@ -437,7 +491,7 @@ export class DrumAudio {
       [0, 2, 3, 5, 3, 5, 7, _, 5, 7, 8, 9],
     ];
     const notes = phrases[Math.min(3, size)];
-    notes.forEach((n, i) => n !== _ && this.pluck(t + i * step, IN_SCALE[n], 1 + size * 0.1));
+    notes.forEach((n, i) => n !== _ && this.pluck(t + i * step, this.scale[n], 1 + size * 0.1));
     const end = t + notes.length * step;
     this.duck(end - this.ctx.currentTime + 0.8);
     if (size >= 1) {
@@ -447,7 +501,7 @@ export class DrumAudio {
     if (size >= 2) {
       this.don(end, 0.9);
       this.boom(end, 0.5 + (size - 2) * 0.4);
-      for (const n of [5, 7, 9]) this.pluck(end, IN_SCALE[n], 0.8);
+      for (const n of [5, 7, 9]) this.pluck(end, this.scale[n], 0.8);
     }
     if (size >= 3) this.kane(end, 0.8);
   }
@@ -457,7 +511,7 @@ export class DrumAudio {
     if (!this.ctx) return;
     const t = this.nextGrid(2);
     const step = 60 / this.bpm / 4;
-    for (let i = 0; i < 6; i++) this.pluck(t + i * step, IN_SCALE[Math.min(IN_SCALE.length - 1, tier * 2 + i)], 1.2);
+    for (let i = 0; i < 6; i++) this.pluck(t + i * step, this.scale[Math.min(this.scale.length - 1, tier * 2 + i)], 1.2);
     this.gong(t, 0.6 + tier * 0.2);
     this.don(t, 1);
     this.shimmer(t + 6 * step, true, 10 + tier * 3, 0.8);
@@ -465,20 +519,23 @@ export class DrumAudio {
   }
 
   // Each groove is a four-bar loop in eighths: drums, a bass line on the bar's
-  // root, a pad, and a melody (in-scale indices, _ for a rest).
+  // root, a pad, a melody (scale indices, _ for a rest) and optional flute
+  // phrases as [step, scale index, length in steps].
   private grooves = {
-    // Gentle base-game festival: don on the bar, a lazy koto tune over it.
+    // Base-game festival: a light drum, a running koto pattern and a flute lead.
     festival: {
       pattern: 'D.......k...D.k.',
       gain: 0.35,
       kaneEvery: 32,
-      roots: [D2, BB1, G1, A1],
-      bassSteps: 'B.....B.',
-      bassVel: 0.35,
+      scale: HIRAJOSHI,
+      roots: [D2, BB1, F2, A1],
+      bassSteps: 'B.......',
+      bassVel: 0.15,
       voice: 'koto',
       melodyVel: 0.55,
-      padVel: 0.05,
-      melody: [5, _, 3, _, 2, _, 3, _, 4, _, _, 3, _, _, 2, _, 5, _, 6, _, 5, _, 3, _, 2, _, _, _, 0, _, _, _],
+      padVel: 0.02,
+      melody: [0, 3, 5, 6, 5, 3, 5, 3, 4, 2, 4, 5, 4, 2, 1, 2, 2, 3, 5, 7, 5, 3, 2, 3, 3, 1, 3, 6, 3, 1, 0, 1],
+      flute: [[0, 8, 6], [6, 7, 2], [8, 6, 8], [16, 7, 4], [20, 8, 4], [24, 5, 8]],
     },
     // Driving storm groove for the bonus: a shamisen ostinato over a pushing bass.
     storm: {
@@ -488,10 +545,12 @@ export class DrumAudio {
       roots: [D2, EB2, D2, BB1],
       bassSteps: 'B..B..B.',
       bassVel: 0.7,
+      scale: IN_SCALE,
       voice: 'shamisen',
       melodyVel: 0.7,
       padVel: 0.06,
       melody: [5, 3, 5, 2, 5, 3, 4, 3, 6, 4, 6, 3, 6, 4, 5, 4, 5, 3, 5, 2, 5, 7, 6, 5, 4, 2, 4, 1, 4, 3, 2, _],
+      flute: [] as number[][],
     },
   };
   private groove: keyof DrumAudio['grooves'] | null = null;
@@ -504,6 +563,7 @@ export class DrumAudio {
     this.bpm = bpm;
     this.groove = style;
     const g = this.grooves[style];
+    this.scale = g.scale;
     const step = 60 / bpm / 2;
     let i = Math.ceil(this.ctx.currentTime / step);
     const schedule = () => {
@@ -522,8 +582,12 @@ export class DrumAudio {
           if (i % 8 === 0) this.pad(at, root, g.padVel, step * 8);
           const n = g.melody[i % g.melody.length];
           if (n !== _) {
-            if (g.voice === 'koto') this.pluck(at, IN_SCALE[n], g.melodyVel);
-            else this.shamisen(at, IN_SCALE[n], g.melodyVel);
+            if (g.voice === 'koto') this.pluck(at, g.scale[n], g.melodyVel);
+            else this.shamisen(at, g.scale[n], g.melodyVel);
+          }
+          for (const [s, f, len] of g.flute) {
+            // Up an octave: the shinobue sits high, above the koto.
+            if (i % g.melody.length === s) this.flute(at, g.scale[f] * 2, len * step, 0.45);
           }
         }
         i++;

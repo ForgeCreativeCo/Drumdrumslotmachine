@@ -182,8 +182,10 @@ animation timing. The maths in `src/math/` has no dependencies.
   drawn by the stage.
 - All sound (taiko, rim clicks, shime, kane, gong, thunder, koto stings and the
   music) is synthesized live with Web Audio, so there are no audio assets. The
-  music bed is a four-bar loop of sub-heavy drums, bass, pad and melody (koto in
-  the base game, a shamisen ostinato in the Drum Storm) through a hall reverb;
-  wins add harp-like shimmers and cinematic booms and duck the bed. That includes the pachislot cues: the lever pull, stop-button clacks,
+  base game plays a traditional-style ensemble in the hirajoshi scale: a
+  shinobue-style flute over a running koto pattern with a light drum. The Drum
+  Storm switches to a cinematic sound: sub-heavy drums, a shamisen ostinato,
+  bass and pad in the darker in-scale. Everything runs through a hall reverb;
+  wins add harp-like shimmers and booms in the current scale and duck the music. That includes the pachislot cues: the lever pull, stop-button clacks,
   the chance-up rise under anticipation, the キュイン (kyuin) when the third 雷
   lands, and the freeze that cuts the music before the Festival.
