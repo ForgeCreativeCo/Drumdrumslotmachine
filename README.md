@@ -158,6 +158,27 @@ and shrine. Wide 16:9 paintings work best.
 - If the first seconds render below 30 fps, the game drops bloom and renders
   at 1× resolution.
 
+## Installing as an app (PWA)
+
+The production build (`npm run build`) is an installable Progressive Web App.
+Serve `dist/` over HTTPS, then use **Install app** in Chrome or Edge, or
+**Share → Add to Home Screen** in Safari on iOS. It opens fullscreen and plays
+offline after the first visit.
+
+- `public/manifest.webmanifest` holds the app's name, colours and icons.
+  `public/icons/` holds the icons. Regenerate them with
+  `node scripts/make-icons.mjs public/icons`, which needs the `playwright`
+  package and network access for Google Fonts.
+- `pwa/sw.js` is the service worker template. A small plugin in
+  `vite.config.ts` emits it as `dist/sw.js`, filling in every built file to
+  precache and a version hash. Each new build installs a fresh cache and
+  deletes the old one. Page loads try the network for 3 seconds, so updates
+  arrive on the next launch, then fall back to the cache. Google Fonts are
+  cached as they load.
+- The worker registers only in production builds, and only when the page has
+  a manifest link. The artifact page has no manifest link, so it never
+  registers one.
+
 ## Publishing as an artifact
 
 ```bash

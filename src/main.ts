@@ -135,6 +135,13 @@ const stage = await Stage.create($('#stage'), {
 const reels = stage.main.reels;
 // Dev-only handle for poking the stage from the console or test scripts.
 const attract = new Attract(stage, reels);
+// Offline play as an installed app. The artifact page has no manifest link, so it skips this.
+// The stage setup above is awaited, so the page may have finished loading already.
+if (import.meta.env.PROD && 'serviceWorker' in navigator && document.querySelector('link[rel="manifest"]')) {
+  const register = () => void navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+  if (document.readyState === 'complete') register();
+  else window.addEventListener('load', register, { once: true });
+}
 if (import.meta.env.DEV) (window as unknown as { __taiko: unknown }).__taiko = { stage, reels, crescendo, festivalSummary, winClimb, attract };
 
 function updateHud(): void {
