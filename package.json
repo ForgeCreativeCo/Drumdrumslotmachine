@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "sim": "vite-node scripts/sim.ts"
+    "sim": "vite-node scripts/sim.ts",
+    "artifact": "vite build && node scripts/build-artifact.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
