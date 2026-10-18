@@ -1,4 +1,5 @@
 import { Container, FillGradient, Graphics, Sprite, Text, type TextStyleOptions } from 'pixi.js';
+import gsap from 'gsap';
 import { FONT } from './paint';
 import { beat } from './beat';
 import { tex } from './textures';
@@ -35,6 +36,16 @@ export const LACQUER = () =>
     [0.35, '#7a1512'],
     [1, '#2a0504'],
   ]);
+
+/** Destroy a display tree after stopping every tween on it, so none writes to a destroyed object. */
+export function destroyTree(c: Container): void {
+  const stop = (o: Container): void => {
+    gsap.killTweensOf([o, o.position, o.scale]);
+    o.children.forEach((child) => stop(child));
+  };
+  stop(c);
+  c.destroy({ children: true });
+}
 
 /** Bevelled metallic numerals for money. */
 export function moneyText(size: number, text = ''): Text {

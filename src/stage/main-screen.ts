@@ -4,7 +4,7 @@ import { beat } from './beat';
 import { FONT, paintSeigaiha } from './paint';
 import { CELL, GAP, ReelSet, WINDOW_H, WINDOW_W } from './reels';
 import { tex } from './textures';
-import { GOLD, LedStrip, brushText, linear, moneyText } from './ui';
+import { GOLD, LedStrip, brushText, destroyTree, linear, moneyText } from './ui';
 
 export const MAIN_H = 900;
 const W = 1080;
@@ -154,7 +154,7 @@ export class MainScreen extends Container {
 
   /** Take over the reel window with a bonus panel; returns its empty content layer (932 x 540). */
   openPanel(): Container {
-    this.panelContent.removeChildren().forEach((c) => c.destroy({ children: true }));
+    this.panelContent.removeChildren().forEach(destroyTree);
     gsap.killTweensOf(this.panel);
     this.panel.visible = true;
     if (this.panel.alpha < 1) gsap.fromTo(this.panel, { alpha: this.panel.alpha }, { alpha: 1, duration: 0.35 });
@@ -168,7 +168,7 @@ export class MainScreen extends Container {
         duration: 0.35,
         onComplete: () => {
           this.panel.visible = false;
-          this.panelContent.removeChildren().forEach((c) => c.destroy({ children: true }));
+          this.panelContent.removeChildren().forEach(destroyTree);
           resolve();
         },
       });

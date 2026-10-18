@@ -9,7 +9,7 @@ import { FONT } from './paint';
 import { Particles } from './particles';
 import { WinActor, crackle, jaggedLine } from './symbol-fx';
 import { tex } from './textures';
-import { GOLD, bachi } from './ui';
+import { GOLD, bachi, destroyTree } from './ui';
 
 export const CELL = 180;
 export const GAP = 8;
@@ -509,8 +509,9 @@ export class ReelSet extends Container {
         const f = new Sprite({ texture: tex().glow, anchor: 0.5, tint: 0x9fd8ff, x, y });
         f.scale.set(1.2);
         this.flashes.addChild(f);
-        gsap.to(f, { alpha: 0, duration: 0.7, onComplete: () => f.destroy() });
         gsap.to(f.scale, { x: 3.2, y: 3.2, duration: 0.7, ease: 'power2.out' });
+        // Destroy from the tween that renders last, so the scale tween never outlives the sprite.
+        gsap.to(f, { alpha: 0, duration: 0.7, onComplete: () => f.destroy() });
       }
     }
   }
@@ -564,7 +565,7 @@ export class ReelSet extends Container {
     }
     for (const [key, c] of this.stickyMap) {
       if (!live.has(key)) {
-        c.destroy({ children: true });
+        destroyTree(c);
         this.stickyMap.delete(key);
       }
     }
