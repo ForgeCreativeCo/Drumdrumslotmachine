@@ -176,7 +176,11 @@ Serve `dist/` over HTTPS, then use **Install app** in Chrome or Edge, or
 **Share → Add to Home Screen** in Safari on iOS. It opens fullscreen and plays
 offline after the first visit.
 
-- `public/manifest.webmanifest` holds the app's name, colours and icons.
+- `public/manifest.webmanifest` holds the app's name, colours and icons. Its
+  `id` is `/taiko-thunder/`. Browsers resolve `id` from the site root, not
+  from the manifest's folder. With `"./"`, every project on a shared host like
+  `forgecreativeco.github.io` would count as the same app, and Chrome would
+  offer "Open in app" for another project instead of installing this one.
   `public/icons/` holds the icons. Regenerate them with
   `node scripts/make-icons.mjs public/icons`, which needs the `playwright`
   package and network access for Google Fonts.
