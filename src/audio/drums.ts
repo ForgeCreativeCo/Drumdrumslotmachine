@@ -1,14 +1,29 @@
 /**
  * Every sound in the game is synthesized here with Web Audio, so there are no
- * audio assets to load or license.
+ * audio assets to load or license. The music bed and stings aim at the modern
+ * "Japanese casino" sound: sub-heavy drums, koto and shamisen lines over a
+ * bass and pad, and harp-like shimmers on wins.
  */
 
 // In-scale (miyako-bushi) pentatonic on D, for koto-style stings.
 const IN_SCALE = [293.66, 311.13, 392.0, 440.0, 466.16, 587.33, 622.25, 783.99, 880.0, 932.33];
 
+// Bass roots, low enough to sit under the drums.
+const D2 = 73.42;
+const EB2 = 77.78;
+const G1 = 49.0;
+const A1 = 55.0;
+const BB1 = 58.27;
+
+const _ = -1;
+
 export class DrumAudio {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
+  /** Bus for the music bed, so stings can duck it. */
+  private bed!: GainNode;
+  /** Where new voices connect: the master, or the bed while the groove schedules. */
+  private out!: AudioNode;
   private noise!: AudioBuffer;
   private loopTimer: number | null = null;
   muted = false;
@@ -24,12 +39,43 @@ export class DrumAudio {
       const comp = this.ctx.createDynamicsCompressor();
       comp.threshold.value = -12;
       comp.ratio.value = 4;
-      this.master.connect(comp).connect(this.ctx.destination);
+      // Brick-wall limiter last, so stacked booms and stings never clip.
+      const limiter = this.ctx.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.001;
+      limiter.release.value = 0.1;
+      this.master.connect(comp).connect(limiter).connect(this.ctx.destination);
+      this.master.connect(this.hall(comp));
+      this.bed = this.ctx.createGain();
+      this.bed.connect(this.master);
+      this.out = this.master;
       this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
       const data = this.noise.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
+  }
+
+  /** Temple-hall reverb send into `dest`: a decaying noise impulse, with the sub kept dry. Returns its input. */
+  private hall(dest: AudioNode): AudioNode {
+    const ctx = this.ctx!;
+    const len = Math.floor(ctx.sampleRate * 2.4);
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+    }
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 250;
+    const conv = ctx.createConvolver();
+    conv.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.45;
+    hp.connect(conv).connect(wet).connect(dest);
+    return hp;
   }
 
   /** Current audio clock in seconds (falls back to wall clock if audio is unavailable). */
@@ -47,7 +93,7 @@ export class DrumAudio {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(peak, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-    g.connect(this.master);
+    g.connect(this.out);
     return g;
   }
 
@@ -80,6 +126,7 @@ export class DrumAudio {
     if (!this.ctx) return;
     const t = at ?? this.ctx.currentTime;
     this.tone(t, 'sine', 120, 52, 0.9 * vel, 0.55);
+    this.tone(t, 'sine', 62, 40, 0.4 * vel, 0.8, 0.008);
     this.tone(t, 'triangle', 190, 90, 0.25 * vel, 0.18);
     this.noiseBurst(t, 600, 0.8, 0.35 * vel, 0.08, 'lowpass');
   }
@@ -117,6 +164,29 @@ export class DrumAudio {
       this.tone(t, 'sine', f * 1.01, f, a * vel, 3.2, 0.02);
     }
     this.noiseBurst(t, 300, 0.5, 0.2 * vel, 0.6, 'lowpass');
+    this.boom(t, 0.5 * vel);
+  }
+
+  /** Cinematic sub boom: a falling sine with a low rumble under it. */
+  boom(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    this.tone(t, 'sine', 70, 28, 0.45 * vel, 1.8, 0.01);
+    this.tone(t, 'triangle', 110, 55, 0.1 * vel, 0.6, 0.005);
+    this.noiseBurst(t, 140, 0.7, 0.25 * vel, 1.2, 'lowpass');
+  }
+
+  /** Harp-like glissando across the in-scale, `notes` long; falls instead when `up` is false. */
+  shimmer(at?: number, up = true, notes = 12, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    const all = [...IN_SCALE, ...IN_SCALE.map((f) => f * 2)];
+    const run = up ? all.slice(-notes) : all.slice(-notes).reverse();
+    run.forEach((f, i) => {
+      const at2 = t + i * 0.028;
+      this.tone(at2, 'sine', f, f, 0.07 * vel, 0.9, 0.002);
+      this.tone(at2, 'triangle', f * 2, f * 2, 0.025 * vel, 0.35, 0.002);
+    });
   }
 
   /** Crack of thunder for Raijin's lightning. */
@@ -282,6 +352,66 @@ export class DrumAudio {
     o.stop(at + 1);
   }
 
+  /** Shamisen-like pluck: a bachi snap, then a bright buzzing string that dulls fast. */
+  shamisen(at: number, freq: number, vel = 1): void {
+    const ctx = this.ctx!;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.Q.value = 3;
+    f.frequency.setValueAtTime(7000, at);
+    f.frequency.exponentialRampToValueAtTime(freq * 2.5, at + 0.22);
+    f.connect(this.env(at, 0.13 * vel, 0.002, 0.4));
+    for (const cents of [0, 7]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.detune.value = cents;
+      o.frequency.setValueAtTime(freq * 1.03, at);
+      o.frequency.exponentialRampToValueAtTime(freq, at + 0.03);
+      o.connect(f);
+      o.start(at);
+      o.stop(at + 0.5);
+    }
+    this.noiseBurst(at, 5000, 2, 0.12 * vel, 0.012);
+  }
+
+  /** Sub bass note with a soft upper harmonic so it still reads on phone speakers. */
+  bass(at: number, freq: number, vel = 1, len = 0.4): void {
+    this.tone(at, 'sine', freq, freq, 0.45 * vel, len, 0.008);
+    this.tone(at, 'triangle', freq * 2, freq * 2, 0.12 * vel, len * 0.6, 0.006);
+  }
+
+  /** Soft, slow-swelling pad on the root, held for `len` seconds. */
+  pad(at: number, freq: number, vel: number, len: number): void {
+    const ctx = this.ctx!;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vel, at + len * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    g.connect(this.out);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 1400;
+    f.connect(g);
+    for (const [mul, cents] of [[4, -8], [4, 8], [8, 0]] as const) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.detune.value = cents;
+      o.frequency.value = freq * mul;
+      o.connect(f);
+      o.start(at);
+      o.stop(at + len + 0.05);
+    }
+  }
+
+  /** Pull the music bed down under a sting for `seconds`, then bring it back. */
+  private duck(seconds: number): void {
+    const t = this.ctx!.currentTime;
+    const g = this.bed.gain;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(0.3, t, 0.03);
+    g.setTargetAtTime(1, t + seconds, 0.3);
+  }
+
   /** Tempo of the running groove; stings and accents snap to its grid. */
   bpm = 116;
 
@@ -292,14 +422,34 @@ export class DrumAudio {
     return Math.ceil((now + 0.02) / step) * step;
   }
 
-  /** Short rising koto sting, landing on the beat grid; `size` 0..3 makes it longer. */
+  /**
+   * Koto win jingle, landing on the beat grid. `size` 0..3 grows it from a
+   * three-note lift to a two-phrase fanfare with a held chord, boom and shimmer.
+   */
   winSting(size = 0): void {
     if (!this.ctx) return;
     const t = this.nextGrid(2);
     const step = 60 / this.bpm / 4;
-    const notes = [0, 2, 3, 5, 7, 9].slice(0, 3 + size);
-    notes.forEach((n, i) => this.pluck(t + i * step, IN_SCALE[n]));
-    if (size >= 2) this.don(t + notes.length * step, 0.9);
+    const phrases = [
+      [2, 3, 5],
+      [2, 3, 5, _, 7],
+      [0, 2, 3, 5, 3, 5, 7, 9],
+      [0, 2, 3, 5, 3, 5, 7, _, 5, 7, 8, 9],
+    ];
+    const notes = phrases[Math.min(3, size)];
+    notes.forEach((n, i) => n !== _ && this.pluck(t + i * step, IN_SCALE[n], 1 + size * 0.1));
+    const end = t + notes.length * step;
+    this.duck(end - this.ctx.currentTime + 0.8);
+    if (size >= 1) {
+      this.bass(end, D2, 0.8, 0.9);
+      this.shimmer(end, true, 6 + size * 3, 0.6 + size * 0.2);
+    }
+    if (size >= 2) {
+      this.don(end, 0.9);
+      this.boom(end, 0.5 + (size - 2) * 0.4);
+      for (const n of [5, 7, 9]) this.pluck(end, IN_SCALE[n], 0.8);
+    }
+    if (size >= 3) this.kane(end, 0.8);
   }
 
   /** A rising run for each step of the win climb (tier 0..2). */
@@ -310,13 +460,39 @@ export class DrumAudio {
     for (let i = 0; i < 6; i++) this.pluck(t + i * step, IN_SCALE[Math.min(IN_SCALE.length - 1, tier * 2 + i)], 1.2);
     this.gong(t, 0.6 + tier * 0.2);
     this.don(t, 1);
+    this.shimmer(t + 6 * step, true, 10 + tier * 3, 0.8);
+    this.duck(6 * step + 1.5);
   }
 
+  // Each groove is a four-bar loop in eighths: drums, a bass line on the bar's
+  // root, a pad, and a melody (in-scale indices, _ for a rest).
   private grooves = {
-    // Gentle base-game festival: don on the bar, soft rim and shime.
-    festival: { pattern: 'D.......k...D.k.', gain: 0.35, kaneEvery: 32 },
-    // Driving storm groove for the bonus.
-    storm: { pattern: 'D.kDD.kkD.kDDkDk', gain: 1, kaneEvery: 16 },
+    // Gentle base-game festival: don on the bar, a lazy koto tune over it.
+    festival: {
+      pattern: 'D.......k...D.k.',
+      gain: 0.35,
+      kaneEvery: 32,
+      roots: [D2, BB1, G1, A1],
+      bassSteps: 'B.....B.',
+      bassVel: 0.35,
+      voice: 'koto',
+      melodyVel: 0.55,
+      padVel: 0.05,
+      melody: [5, _, 3, _, 2, _, 3, _, 4, _, _, 3, _, _, 2, _, 5, _, 6, _, 5, _, 3, _, 2, _, _, _, 0, _, _, _],
+    },
+    // Driving storm groove for the bonus: a shamisen ostinato over a pushing bass.
+    storm: {
+      pattern: 'D.kDD.kkD.kDDkDk',
+      gain: 1,
+      kaneEvery: 16,
+      roots: [D2, EB2, D2, BB1],
+      bassSteps: 'B..B..B.',
+      bassVel: 0.7,
+      voice: 'shamisen',
+      melodyVel: 0.7,
+      padVel: 0.06,
+      melody: [5, 3, 5, 2, 5, 3, 4, 3, 6, 4, 6, 3, 6, 4, 5, 4, 5, 3, 5, 2, 5, 7, 6, 5, 4, 2, 4, 1, 4, 3, 2, _],
+    },
   };
   private groove: keyof DrumAudio['grooves'] | null = null;
 
@@ -332,6 +508,7 @@ export class DrumAudio {
     let i = Math.ceil(this.ctx.currentTime / step);
     const schedule = () => {
       if (!this.ctx) return;
+      this.out = this.bed;
       while (i * step < this.ctx.currentTime + 0.25) {
         const at = i * step;
         if (at >= this.ctx.currentTime) {
@@ -340,9 +517,18 @@ export class DrumAudio {
           else if (c === 'k') this.ka(at, 0.35 * g.gain);
           if (i % g.kaneEvery === 0) this.kane(at, 0.4 * g.gain);
           if (i % 4 === 2) this.shime(at, 0.15 * g.gain);
+          const root = g.roots[Math.floor(i / 8) % g.roots.length];
+          if (g.bassSteps[i % 8] === 'B') this.bass(at, root, g.bassVel, step * 2.5);
+          if (i % 8 === 0) this.pad(at, root, g.padVel, step * 8);
+          const n = g.melody[i % g.melody.length];
+          if (n !== _) {
+            if (g.voice === 'koto') this.pluck(at, IN_SCALE[n], g.melodyVel);
+            else this.shamisen(at, IN_SCALE[n], g.melodyVel);
+          }
         }
         i++;
       }
+      this.out = this.master;
     };
     schedule();
     this.loopTimer = window.setInterval(schedule, 60);
