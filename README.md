@@ -165,7 +165,9 @@ npm run artifact -- <out-dir>
 ```
 
 This writes `taiko-thunder.html` with the CSS inlined, plus the script chunks
-in `assets/`. The artifact viewer enforces a Content Security Policy without
+in `assets/`, and prints the publish map. Chunk names change whenever the
+bundle changes, so publish every file in the map (including the `null`
+entries, which remove the previous build's chunks), not just the entry. The artifact viewer enforces a Content Security Policy without
 `unsafe-eval`, so the stage imports `pixi.js/unsafe-eval` to replace Pixi's
 generated code with CSP-safe versions. Publish the page with those files alongside it. The chunks stay
 separate because a single merged bundle breaks Pixi's lazy-loaded renderer
