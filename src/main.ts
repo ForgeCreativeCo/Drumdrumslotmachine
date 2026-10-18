@@ -5,20 +5,17 @@ import { FreeSpinSession, JACKPOTS, STICKY_MULT_CAP, playBaseSpin, type SpinOutc
 import { RHYTHM } from './math/rhythm';
 import { cryptoRng } from './math/rng';
 import { PAYING_SYMBOLS, PAYTABLE, SCATTER_PAY, SYMBOLS } from './math/symbols';
-import { Fx } from './ui/fx';
 import { crescendo, festivalIntro, festivalSummary } from './stage/festival-panels';
 import { paintSymbol } from './stage/paint';
 import { playSummoning } from './stage/summoning';
+import { Attract } from './stage/attract';
 import { Stage } from './stage/stage';
+import { winClimb } from './stage/win-climb';
 
 const BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50];
 const START_BALANCE = 1000;
 const STORAGE_KEY = 'taiko-thunder:v1';
-const BIG_WINS = [
-  { at: 100, label: 'EPIC WIN', jp: '大祭' },
-  { at: 40, label: 'MEGA WIN', jp: '豪勝' },
-  { at: 15, label: 'BIG WIN', jp: '大勝利' },
-];
+const IDLE_MS = 20000;
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
@@ -66,14 +63,18 @@ const bet = () => BETS[state.betIndex];
 /** `?festival` in the URL makes the first spin trigger the bonus, for showing it off. */
 let forceFestival = new URLSearchParams(location.search).has('festival');
 
-const fx = new Fx($<HTMLCanvasElement>('#fx'));
-fx.setPetals(0);
 const modal = $('#modal');
 const modalCard = $('.modal-card');
 const live = $('#live');
 audio.setMuted(state.muted);
 
 // ---- Controls ---------------------------------------------------------------
+
+/** Unlock audio on a user gesture and keep the right groove playing. */
+function unlockAudio(): void {
+  audio.unlock();
+  if (!state.inBonus) audio.startLoop('festival', 116);
+}
 
 function onSpinPressed(): void {
   if (state.auto) {
@@ -86,21 +87,21 @@ function onSpinPressed(): void {
 
 function onAuto(): void {
   if (state.inBonus) return;
-  audio.unlock();
+  unlockAudio();
   state.auto = !state.auto;
   updateHud();
   if (state.auto) void spin();
 }
 
 function onTurbo(): void {
-  audio.unlock();
+  unlockAudio();
   state.turbo = !state.turbo;
   updateHud();
   save();
 }
 
 function onSound(): void {
-  audio.unlock();
+  unlockAudio();
   state.muted = !state.muted;
   audio.setMuted(state.muted);
   updateHud();
@@ -116,7 +117,7 @@ function changeBet(d: number): void {
   const next = Math.max(0, Math.min(BETS.length - 1, state.betIndex + d));
   if (next === state.betIndex) return;
   state.betIndex = next;
-  audio.unlock();
+  unlockAudio();
   audio.ka();
   updateHud();
   save();
@@ -133,7 +134,8 @@ const stage = await Stage.create($('#stage'), {
 });
 const reels = stage.main.reels;
 // Dev-only handle for poking the stage from the console or test scripts.
-if (import.meta.env.DEV) (window as unknown as { __taiko: unknown }).__taiko = { stage, reels, crescendo, festivalSummary };
+const attract = new Attract(stage, reels);
+if (import.meta.env.DEV) (window as unknown as { __taiko: unknown }).__taiko = { stage, reels, crescendo, festivalSummary, winClimb, attract };
 
 function updateHud(): void {
   stage.deck.setBalance(fmt(state.balance));
@@ -163,12 +165,6 @@ function say(text: string): void {
   live.textContent = text;
 }
 
-function toast(text: string, cls = ''): void {
-  const t = $('#toast');
-  t.textContent = text;
-  t.className = `show ${cls}`;
-  window.setTimeout(() => (t.className = ''), 1800);
-}
 
 function openModal(html: string, cls = ''): HTMLElement {
   modalCard.className = `modal-card ${cls}`;
@@ -268,46 +264,16 @@ function symbolImg(id: keyof typeof SYMBOLS): string {
   return `<img src="${url}" alt="">`;
 }
 
-async function bigWin(amount: number): Promise<void> {
-  const x = amount / bet();
-  const tier = BIG_WINS.find((b) => x >= b.at);
-  if (!tier) return;
-  const el = $('#bigwin');
-  el.hidden = false;
-  el.innerHTML = `<div class="bw-jp">${tier.jp}</div><div class="bw-label">${tier.label}</div><div class="bw-amount">0.00</div><p class="bw-skip">Tap to continue</p>`;
-  audio.gong();
-  audio.winSting(3);
-  fx.coins(tier.at >= 100 ? 160 : tier.at >= 40 ? 110 : 70);
-  stage.shake('big');
-  stage.celebrate(6);
-  let skip = false;
-  const tapped = new Promise<void>((r) =>
-    el.addEventListener(
-      'pointerdown',
-      () => {
-        skip = true;
-        r();
-      },
-      { once: true },
-    ),
-  );
-  const amountEl = el.querySelector<HTMLElement>('.bw-amount')!;
-  const ms = Math.min(6000, 1800 + x * 25);
-  const drum = window.setInterval(() => audio.don(undefined, 0.5), 260);
-  await Promise.race([countUp((v) => (amountEl.textContent = v), amount, ms), tapped]);
-  window.clearInterval(drum);
-  amountEl.textContent = fmt(amount);
-  audio.don(undefined, 1);
-  audio.kane();
-  await wait(skip ? 300 : 1600);
-  el.hidden = true;
+/** Big, Mega and Epic wins climb on the cabinet. */
+function bigWin(amount: number): Promise<void> {
+  return winClimb(stage, amount, bet(), fmt);
 }
 
 // ---- Base game -------------------------------------------------------------
 
 async function spin(): Promise<void> {
   if (state.busy || state.inBonus || !modal.hidden) return;
-  audio.unlock();
+  unlockAudio();
   if (state.balance < bet() - 1e-9) {
     state.auto = false;
     updateHud();
@@ -447,7 +413,8 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   say(`Festival of a Thousand Drums · ${o.freeSpinsAwarded} free spins`);
   await festivalIntro(stage, o.scatters.length, o.freeSpinsAwarded);
 
-  // Stage 1.
+  // Stage 1: no groove, so the player's drumming is the music.
+  audio.stopLoop();
   say('The Summoning');
   const rhythm = await playSummoning(stage);
   await stage.main.closePanel();
@@ -458,7 +425,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   stage.main.setStats(bonusStats(session));
   setWin(0);
   say(`Drum Storm! Drum power ×${session.multiplier}`);
-  audio.startLoop();
+  audio.startLoop('storm', 132);
   await wait(800);
 
   let charges = 0;
@@ -533,7 +500,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
       audio.gong();
       stage.top.strike(1);
       stage.top.fireworks(3);
-      toast(`+${fs.retrigger} FREE SPINS`, 'gold');
+      stage.toast(`+${fs.retrigger} FREE SPINS`);
     }
     stage.main.setStats(bonusStats(session));
     await wait(state.turbo ? 500 : fs.totalWin > 0 ? 1300 : 700);
@@ -570,6 +537,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   }, 0xfff1c2, 0.05);
   say(`The festival paid ${fmt(total)}`);
   state.inBonus = false;
+  audio.startLoop('festival', 116);
   updateHud();
 }
 
@@ -631,6 +599,25 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   fn();
 });
+
+// ---- Attract mode ----------------------------------------------------------
+
+let lastInput = performance.now();
+/** Any input counts as activity; the first one while attracting only wakes the machine. */
+function onActivity(e: Event): void {
+  lastInput = performance.now();
+  if (!attract.active) return;
+  attract.stop();
+  e.stopPropagation();
+  e.preventDefault();
+}
+window.addEventListener('pointerdown', onActivity, { capture: true });
+window.addEventListener('keydown', onActivity, { capture: true });
+window.setInterval(() => {
+  if (state.busy || state.auto) lastInput = performance.now();
+  const idle = performance.now() - lastInput > IDLE_MS;
+  if (idle && !attract.active && !state.busy && !state.inBonus && modal.hidden) attract.start();
+}, 1000);
 
 updateHud();
 say('243 ways · 3+ 雷 start the Festival of a Thousand Drums');

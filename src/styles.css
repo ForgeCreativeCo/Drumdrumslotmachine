@@ -100,42 +100,9 @@ button:focus-visible {
 
 /* ---- Overlays ------------------------------------------------------------ */
 
-#fx {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 25;
-}
 
-#toast {
-  position: fixed;
-  left: 50%;
-  top: 30%;
-  transform: translate(-50%, -50%) scale(0.6);
-  opacity: 0;
-  padding: 10px 22px;
-  border-radius: 12px;
-  background: var(--panel);
-  border: 2px solid var(--gold);
-  font-family: var(--display);
-  font-weight: 900;
-  font-size: 22px;
-  letter-spacing: 0.1em;
-  pointer-events: none;
-  z-index: 40;
-  transition: transform 0.3s cubic-bezier(.3, 1.6, .5, 1), opacity 0.3s;
-}
 
-#toast.show {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
 
-#toast.gold {
-  color: var(--gold-hi);
-}
 
 #modal {
   position: fixed;
@@ -151,8 +118,7 @@ button:focus-visible {
   animation: fade 0.3s ease-out;
 }
 
-#modal[hidden],
-#bigwin[hidden] {
+#modal[hidden] {
   display: none;
 }
 
@@ -298,59 +264,6 @@ button:focus-visible {
 .fine {
   font-size: 12px;
   color: var(--ink-dim) !important;
-}
-
-/* Big win */
-
-#bigwin {
-  position: fixed;
-  inset: 0;
-  z-index: 35;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  background: radial-gradient(circle, rgba(122, 21, 18, 0.85), rgba(5, 2, 3, 0.92) 70%);
-  animation: fade 0.3s ease-out;
-}
-
-.bw-jp {
-  font-size: clamp(60px, 20vw, 120px);
-  font-weight: 900;
-  line-height: 1;
-  color: var(--gold);
-  text-shadow: 0 4px 0 #5a0d0d, 0 0 40px rgba(243, 199, 90, 0.7);
-  animation: slam 0.6s cubic-bezier(.2, 1.5, .4, 1);
-}
-
-.bw-label {
-  font-family: var(--display);
-  font-weight: 900;
-  font-size: clamp(28px, 9vw, 52px);
-  letter-spacing: 0.12em;
-  background: linear-gradient(180deg, var(--gold-hi), var(--gold) 50%, var(--gold-lo));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: slam 0.6s 0.15s cubic-bezier(.2, 1.5, .4, 1) both;
-}
-
-.bw-amount {
-  margin-top: 10px;
-  font-family: var(--display);
-  font-size: clamp(30px, 10vw, 60px);
-  font-variant-numeric: tabular-nums;
-  color: #fff;
-  text-shadow: 0 0 20px rgba(243, 199, 90, 0.8);
-}
-
-.bw-skip {
-  color: var(--ink-dim);
-  font-size: 12px;
-}
-
-@keyframes slam {
-  from { transform: scale(2.6); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
 }
 
 @keyframes fade {

@@ -253,6 +253,11 @@ export class ReelSet extends Container {
     if (f) f.color = on ? 0x6fc3ff : 0xffd86b;
   }
 
+  /** The symbols currently showing. */
+  get current(): Grid {
+    return this.grid.map((c) => [...c]);
+  }
+
   setGrid(grid: Grid): void {
     this.grid = grid.map((c) => [...c]);
     this.reels.forEach((r, i) => r.setColumn(this.grid[i]));

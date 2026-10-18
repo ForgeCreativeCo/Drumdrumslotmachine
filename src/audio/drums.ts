@@ -162,31 +162,65 @@ export class DrumAudio {
     o.stop(at + 1);
   }
 
-  /** Short rising koto sting; `size` 0..3 makes it longer. */
-  winSting(size = 0): void {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
-    const notes = [0, 2, 3, 5, 7, 9].slice(0, 3 + size);
-    notes.forEach((n, i) => this.pluck(t + i * 0.09, IN_SCALE[n]));
-    if (size >= 2) this.don(t + notes.length * 0.09, 0.9);
+  /** Tempo of the running groove; stings and accents snap to its grid. */
+  bpm = 116;
+
+  /** Audio time of the next grid line, `div` lines per beat (2 = eighths). */
+  nextGrid(div = 2): number {
+    const now = this.now();
+    const step = 60 / this.bpm / div;
+    return Math.ceil((now + 0.02) / step) * step;
   }
 
-  /** Festival groove for the free spins: don . ka don | don ka ka . */
-  startLoop(bpm = 132): void {
-    if (!this.ctx || this.loopTimer !== null) return;
+  /** Short rising koto sting, landing on the beat grid; `size` 0..3 makes it longer. */
+  winSting(size = 0): void {
+    if (!this.ctx) return;
+    const t = this.nextGrid(2);
+    const step = 60 / this.bpm / 4;
+    const notes = [0, 2, 3, 5, 7, 9].slice(0, 3 + size);
+    notes.forEach((n, i) => this.pluck(t + i * step, IN_SCALE[n]));
+    if (size >= 2) this.don(t + notes.length * step, 0.9);
+  }
+
+  /** A rising run for each step of the win climb (tier 0..2). */
+  climbSting(tier: number): void {
+    if (!this.ctx) return;
+    const t = this.nextGrid(2);
+    const step = 60 / this.bpm / 4;
+    for (let i = 0; i < 6; i++) this.pluck(t + i * step, IN_SCALE[Math.min(IN_SCALE.length - 1, tier * 2 + i)], 1.2);
+    this.gong(t, 0.6 + tier * 0.2);
+    this.don(t, 1);
+  }
+
+  private grooves = {
+    // Gentle base-game festival: don on the bar, soft rim and shime.
+    festival: { pattern: 'D.......k...D.k.', gain: 0.35, kaneEvery: 32 },
+    // Driving storm groove for the bonus.
+    storm: { pattern: 'D.kDD.kkD.kDDkDk', gain: 1, kaneEvery: 16 },
+  };
+  private groove: keyof DrumAudio['grooves'] | null = null;
+
+  /** Start (or switch) the groove; it is locked to the same beat grid as the visuals. */
+  startLoop(style: 'festival' | 'storm', bpm: number): void {
+    if (!this.ctx) return;
+    if (this.groove === style && this.loopTimer !== null && this.bpm === bpm) return;
+    this.stopLoop();
+    this.bpm = bpm;
+    this.groove = style;
+    const g = this.grooves[style];
     const step = 60 / bpm / 2;
-    const pattern = 'D.kDD.kkD.kDDkDk';
-    let next = this.ctx.currentTime + 0.1;
-    let i = 0;
+    let i = Math.ceil(this.ctx.currentTime / step);
     const schedule = () => {
       if (!this.ctx) return;
-      while (next < this.ctx.currentTime + 0.25) {
-        const c = pattern[i % pattern.length];
-        if (c === 'D') this.don(next, 0.45);
-        else if (c === 'k') this.ka(next, 0.35);
-        if (i % 16 === 0) this.kane(next, 0.4);
-        if (i % 4 === 2) this.shime(next, 0.15);
-        next += step;
+      while (i * step < this.ctx.currentTime + 0.25) {
+        const at = i * step;
+        if (at >= this.ctx.currentTime) {
+          const c = g.pattern[i % g.pattern.length];
+          if (c === 'D') this.don(at, 0.45 * g.gain);
+          else if (c === 'k') this.ka(at, 0.35 * g.gain);
+          if (i % g.kaneEvery === 0) this.kane(at, 0.4 * g.gain);
+          if (i % 4 === 2) this.shime(at, 0.15 * g.gain);
+        }
         i++;
       }
     };
@@ -197,6 +231,7 @@ export class DrumAudio {
   stopLoop(): void {
     if (this.loopTimer !== null) window.clearInterval(this.loopTimer);
     this.loopTimer = null;
+    this.groove = null;
   }
 }
 

@@ -9,7 +9,7 @@ import { Particles } from './particles';
 import { jaggedLine } from './symbol-fx';
 import { buildTextures, tex } from './textures';
 import { TopScreen, W } from './top';
-import { LedStrip, linear } from './ui';
+import { LedStrip, linear, moneyText } from './ui';
 
 const MIN_H = 1840;
 const MAX_H = 2340;
@@ -47,6 +47,8 @@ export class Stage {
   private flashRect = new Graphics();
   private flood = new Graphics();
   private storm = false;
+  /** Full-cabinet overlay in design space, above every screen and effect. */
+  readonly overlay = new Container();
   private bezel = new Graphics();
   private bezelLeds: LedStrip[] = [];
   top!: TopScreen;
@@ -103,8 +105,11 @@ export class Stage {
       this.bezelLeds.push(l);
       this.shaker.addChild(l);
     }
-    this.shaker.addChild(this.fx);
+    this.shaker.addChild(this.fx, this.overlay);
     this.app.stage.addChild(this.floor, this.cabinet);
+    // Let taps anywhere reach the root (used to skip celebrations and wake the attract loop).
+    this.app.stage.eventMode = 'static';
+    this.app.stage.hitArea = this.app.screen;
     this.layout();
     window.addEventListener('resize', () => this.layout());
     this.app.ticker.add((t) => this.tick(t.deltaMS / 1000));
@@ -264,6 +269,28 @@ export class Stage {
     this.celebrate(seconds);
     const n = Math.round(seconds / 0.8);
     for (let i = 0; i < n; i++) gsap.delayedCall(i * 0.8, () => this.coinShower(40));
+  }
+
+  /** Design-space rectangles of the three screens. */
+  get screens(): Record<'top' | 'main' | 'deck', { x: number; y: number; w: number; h: number }> {
+    const topH = this.designH - MAIN_H - DECK_H;
+    return {
+      top: { x: 0, y: 0, w: W, h: topH },
+      main: { x: 0, y: topH, w: W, h: MAIN_H },
+      deck: { x: 0, y: topH + MAIN_H, w: W, h: DECK_H },
+    };
+  }
+
+  /** A short gold announcement over the reels, e.g. a retrigger. */
+  toast(text: string): void {
+    const m = this.screens.main;
+    const t = moneyText(64, text);
+    t.position.set(W / 2, m.y + 300);
+    this.overlay.addChild(t);
+    gsap
+      .timeline({ onComplete: () => t.destroy() })
+      .fromTo(t.scale, { x: 2.4, y: 2.4 }, { x: 1, y: 1, duration: 0.5, ease: 'back.out(2)' })
+      .to(t, { alpha: 0, y: t.y - 60, duration: 0.6, delay: 0.9 });
   }
 
   /** Pull the camera back so the whole cabinet reads as one stage. */

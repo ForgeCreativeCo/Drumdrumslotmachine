@@ -120,6 +120,29 @@ Cross-screen effects (bolts, flying sparks, coin showers, flashes) live on
 one layer above all three screens (`Stage.bolt`, `flyTo`, `coinShower`,
 `flash`, `goldFlood`).
 
+### Win climb, attract mode and tempo
+
+- **Win climb** (`src/stage/win-climb.ts`):
+  - For 15× the bet or more, the amount counts up on a festival banner over
+    the reels.
+  - Each time it crosses a tier (Big 15×, Mega 40×, Epic 100×), the banner
+    slams in a new title. Raijin strikes the sky, the drum ring spins up,
+    fireworks fire and a rising koto run plays.
+  - Koban pour into a growing pile on the button deck.
+  - A tap, Space or Enter skips to the final amount.
+- **Attract mode** (`src/stage/attract.ts`):
+  - After 20 idle seconds, Raijin wakes and lightning sweeps the reels.
+  - The drum ring lights up drum by drum, the best symbols on screen show
+    off, and a "Press Spin to Play" prompt pulses.
+  - The first tap or key press only wakes the machine.
+- **One tempo:**
+  - A soft festival groove plays in the base game (116 bpm) and the storm
+    groove in the bonus (132 bpm), both on the same beat clock that drives
+    the lanterns, LEDs and drum pulses.
+  - Win stings and climb runs start on the next eighth note.
+  - The groove drops out during the Summoning, so the player's drumming is
+    the music.
+
 ### Adding painted backdrops
 
 Put `backdrop-festival.jpg` (and optionally `backdrop-storm.jpg`) in
@@ -151,8 +174,8 @@ modules.
 Vite + TypeScript, PixiJS 8 and pixi-filters for rendering, and GSAP for
 animation timing. The maths in `src/math/` has no dependencies.
 
-- The big-win overlay, the info page and the out-of-credits gift are still
-  DOM; everything else is drawn by the stage.
+- Only the info page and the out-of-credits gift are DOM; everything else is
+  drawn by the stage.
 - All sound (taiko, rim clicks, shime, kane, gong, thunder, koto stings and the
   festival groove) is synthesized live with Web Audio, so there are no audio
   assets.
