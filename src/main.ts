@@ -6,9 +6,9 @@ import { RHYTHM } from './math/rhythm';
 import { cryptoRng } from './math/rng';
 import { PAYING_SYMBOLS, PAYTABLE, SCATTER_PAY, SYMBOLS } from './math/symbols';
 import { symbolSvg } from './ui/art';
-import { Fx, shake } from './ui/fx';
-import { ReelsView } from './ui/reels';
+import { Fx } from './ui/fx';
 import { playSummoning } from './ui/rhythm-ui';
+import { Stage } from './stage/stage';
 
 const BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50];
 const START_BALANCE = 1000;
@@ -65,33 +65,99 @@ const bet = () => BETS[state.betIndex];
 /** `?festival` in the URL makes the first spin trigger the bonus, for showing it off. */
 let forceFestival = new URLSearchParams(location.search).has('festival');
 
-// ---- DOM ------------------------------------------------------------------
-
 const fx = new Fx($<HTMLCanvasElement>('#fx'));
-const reels = new ReelsView($('#reels'));
-const app = $('#app');
-const msg = $('#msg');
+fx.setPetals(0);
 const modal = $('#modal');
 const modalCard = $('.modal-card');
-
+const live = $('#live');
 audio.setMuted(state.muted);
 
+// ---- Controls ---------------------------------------------------------------
+
+function onSpinPressed(): void {
+  if (state.auto) {
+    state.auto = false;
+    updateHud();
+    return;
+  }
+  void spin();
+}
+
+function onAuto(): void {
+  if (state.inBonus) return;
+  audio.unlock();
+  state.auto = !state.auto;
+  updateHud();
+  if (state.auto) void spin();
+}
+
+function onTurbo(): void {
+  audio.unlock();
+  state.turbo = !state.turbo;
+  updateHud();
+  save();
+}
+
+function onSound(): void {
+  audio.unlock();
+  state.muted = !state.muted;
+  audio.setMuted(state.muted);
+  updateHud();
+  save();
+}
+
+function onInfo(): void {
+  if (!state.busy && !state.inBonus) showInfo();
+}
+
+function changeBet(d: number): void {
+  if (state.busy || state.inBonus) return;
+  const next = Math.max(0, Math.min(BETS.length - 1, state.betIndex + d));
+  if (next === state.betIndex) return;
+  state.betIndex = next;
+  audio.unlock();
+  audio.ka();
+  updateHud();
+  save();
+}
+
+const stage = await Stage.create($('#stage'), {
+  spin: onSpinPressed,
+  betDown: () => changeBet(-1),
+  betUp: () => changeBet(1),
+  auto: onAuto,
+  turbo: onTurbo,
+  sound: onSound,
+  info: onInfo,
+});
+const reels = stage.main.reels;
+
 function updateHud(): void {
-  $('#balance').textContent = fmt(state.balance);
-  $('#bet').textContent = fmt(bet());
-  for (const j of JACKPOTS) $(`[data-jp="${j.name}"]`).textContent = fmt(j.pay * bet());
+  stage.deck.setBalance(fmt(state.balance));
+  stage.deck.setBet(fmt(bet()), state.betIndex);
+  stage.top.setJackpots(Object.fromEntries(JACKPOTS.map((j) => [j.name, fmt(j.pay * bet())])));
   const locked = state.busy || state.inBonus;
-  $<HTMLButtonElement>('#bet-down').disabled = locked || state.betIndex === 0;
-  $<HTMLButtonElement>('#bet-up').disabled = locked || state.betIndex === BETS.length - 1;
-  $('#spin').classList.toggle('busy', state.busy);
-  $('#auto').classList.toggle('on', state.auto);
-  $('#turbo').classList.toggle('on', state.turbo);
-  $('#sound').classList.toggle('on', !state.muted);
-  $('#sound').textContent = state.muted ? 'SOUND OFF' : 'SOUND ON';
+  stage.deck.setState({
+    auto: state.auto,
+    turbo: state.turbo,
+    muted: state.muted,
+    betLocked: locked,
+    spinEnabled: !state.inBonus && (!state.busy || state.auto),
+    busy: state.busy,
+  });
+  stage.deck.setBetLimits(state.betIndex === 0, state.betIndex === BETS.length - 1, locked);
+  $<HTMLButtonElement>('#a11y-spin').textContent = state.auto ? 'Stop autoplay' : 'Spin';
+  $('#a11y-balance').textContent = `Balance ${fmt(state.balance)}, bet ${fmt(bet())}`;
 }
 
 function setWin(amount: number): void {
-  $('#win').textContent = fmt(amount);
+  stage.deck.setWin(fmt(amount));
+  stage.main.setWin(amount > 0 ? fmt(amount) : null);
+}
+
+function say(text: string): void {
+  stage.main.setInfo(text);
+  live.textContent = text;
 }
 
 function toast(text: string, cls = ''): void {
@@ -116,6 +182,7 @@ function closeModal(): void {
 /** Show a modal and wait for its primary button. */
 function modalChoice(html: string, cls = ''): Promise<void> {
   const card = openModal(html, cls);
+  card.querySelector<HTMLElement>('[data-close]')?.focus();
   return new Promise((resolve) => {
     card.querySelector('[data-close]')!.addEventListener(
       'click',
@@ -129,14 +196,14 @@ function modalChoice(html: string, cls = ''): Promise<void> {
   });
 }
 
-/** Count a number up in an element over `ms`. */
-function countUp(el: HTMLElement, to: number, ms: number, from = 0): Promise<void> {
+/** Count a number up over `ms`, calling `set` with each formatted value. */
+function countUp(set: (v: string) => void, to: number, ms: number, from = 0): Promise<void> {
   return new Promise((resolve) => {
     const t0 = performance.now();
     const step = (now: number) => {
       const k = Math.min(1, (now - t0) / ms);
       const eased = 1 - (1 - k) ** 3;
-      el.textContent = fmt(from + (to - from) * eased);
+      set(fmt(from + (to - from) * eased));
       if (k < 1) requestAnimationFrame(step);
       else resolve();
     };
@@ -173,15 +240,14 @@ function showWins(wins: WayWin[], scatters: [number, number][], scatterWin: numb
   if (!items.length) return;
   const all = items.flatMap((i) => i.positions);
   reels.highlight(all);
-  reels.pulse(all);
-  msg.textContent = items.length > 1 ? `${items.length} wins!` : items[0].text;
+  say(items.length > 1 ? `${items.length} wins!` : items[0].text);
   if (items.length < 2 && !state.inBonus) return;
   let i = 0;
   cycleTimer = window.setInterval(() => {
     const it = items[i++ % items.length];
     reels.highlight(it.positions);
-    msg.textContent = it.text;
-  }, 1300);
+    stage.main.setInfo(it.text);
+  }, 1400);
 }
 
 async function bigWin(amount: number): Promise<void> {
@@ -194,22 +260,28 @@ async function bigWin(amount: number): Promise<void> {
   audio.gong();
   audio.winSting(3);
   fx.coins(tier.at >= 100 ? 160 : tier.at >= 40 ? 110 : 70);
-  shake(app, 'big');
+  stage.shake('big');
+  stage.celebrate(6);
   let skip = false;
-  const onTap = () => (skip = true);
-  el.addEventListener('pointerdown', onTap);
+  const tapped = new Promise<void>((r) =>
+    el.addEventListener(
+      'pointerdown',
+      () => {
+        skip = true;
+        r();
+      },
+      { once: true },
+    ),
+  );
   const amountEl = el.querySelector<HTMLElement>('.bw-amount')!;
   const ms = Math.min(6000, 1800 + x * 25);
-  const counting = countUp(amountEl, amount, ms);
   const drum = window.setInterval(() => audio.don(undefined, 0.5), 260);
-  await Promise.race([counting, new Promise<void>((r) => el.addEventListener('pointerdown', () => r(), { once: true }))]);
+  await Promise.race([countUp((v) => (amountEl.textContent = v), amount, ms), tapped]);
   window.clearInterval(drum);
   amountEl.textContent = fmt(amount);
   audio.don(undefined, 1);
   audio.kane();
-  if (!skip) await wait(1600);
-  else await wait(300);
-  el.removeEventListener('pointerdown', onTap);
+  await wait(skip ? 300 : 1600);
   el.hidden = true;
 }
 
@@ -228,36 +300,56 @@ async function spin(): Promise<void> {
   stopWinCycle();
   state.balance -= bet();
   setWin(0);
-  msg.textContent = 'ドン！';
+  say('ドン！');
+  audio.don(undefined, 0.9);
   updateHud();
   save();
 
   let o = playBaseSpin(cryptoRng);
   while (forceFestival && o.freeSpinsAwarded === 0) o = playBaseSpin(cryptoRng);
   forceFestival = false;
+
+  let landed = 0;
+  let anticipated = -1;
   await reels.spin(o.grid, {
     turbo: state.turbo,
     free: false,
     onStop: (r) => {
       audio.reelStop(r);
+      stage.main.drumHit(r);
+      if (r === anticipated) {
+        stage.main.release();
+        stage.anticipate(false);
+      }
       const sc = o.scatters.filter(([sr]) => sr === r);
       if (sc.length) {
+        landed += sc.length;
         audio.kane();
         reels.pulse(sc, 'thunder');
+        stage.top.lightDrums(landed);
+        stage.top.strike(0.35 + landed * 0.15);
       }
     },
-    onAnticipate: () => audio.roll(state.turbo ? 0.9 : 1.5),
+    onAnticipate: (r) => {
+      anticipated = r;
+      audio.roll(state.turbo ? 1.1 : 1.9);
+      stage.main.push(r);
+      stage.anticipate(true);
+    },
   });
+  stage.main.release();
+  stage.anticipate(false);
 
   const win = o.totalWin * bet();
   if (win > 0) {
     showWins(o.wins, o.scatters, o.scatterWin, 1);
     audio.winSting(o.totalWin >= 5 ? 2 : o.totalWin >= 1 ? 1 : 0);
+    if (o.totalWin >= 1) stage.celebrate(1.6);
     setWin(win);
     await bigWin(win);
     state.balance += win;
   } else {
-    msg.textContent = 'Strike again!';
+    say('Strike again!');
   }
   updateHud();
   save();
@@ -266,6 +358,7 @@ async function spin(): Promise<void> {
     state.auto = false;
     await runFestival(o);
   }
+  stage.top.lightDrums(0);
 
   state.busy = false;
   updateHud();
@@ -297,33 +390,34 @@ function meterHtml(): string {
   return `<div class="pips">${pips}</div>`;
 }
 
-function setCharges(root: HTMLElement, charges: number): void {
+function setPips(root: HTMLElement, charges: number): void {
   root.querySelectorAll<HTMLElement>('.pip').forEach((p) => p.classList.toggle('lit', Number(p.dataset.i) <= charges));
-  const reached = [...JACKPOTS].reverse().find((j) => charges >= j.need);
-  root.dataset.tier = reached?.name ?? '';
 }
 
-/** Fly a spark from a cell into the drum meter. */
+/** Fly a spark from a cell up into Raijin's drum meter on the top screen. */
 function sparkToMeter(reel: number, row: number, charge: number): Promise<void> {
   const [x, y] = reels.cellCenter(reel, row);
-  const pip = $('#meter').querySelector<HTMLElement>(`.pip[data-i="${Math.min(charge, MAX_PIPS)}"]`);
-  if (!pip) return Promise.resolve();
-  const pr = pip.getBoundingClientRect();
+  const [tx, ty] = stage.top.meterPoint(Math.min(charge, MAX_PIPS));
   const s = document.createElement('div');
   s.className = 'spark';
   document.body.appendChild(s);
   const anim = s.animate(
     [
-      { transform: `translate(${x}px, ${y}px) scale(1.4)`, opacity: 1 },
-      { transform: `translate(${pr.left + pr.width / 2}px, ${pr.top + pr.height / 2}px) scale(.6)`, opacity: 0.9 },
+      { transform: `translate(${x}px, ${y}px) scale(1.6)`, opacity: 1 },
+      { transform: `translate(${(x + tx) / 2 + 40}px, ${(y + ty) / 2}px) scale(1.1)`, opacity: 1, offset: 0.5 },
+      { transform: `translate(${tx}px, ${ty}px) scale(.6)`, opacity: 0.9 },
     ],
-    { duration: state.turbo ? 350 : 600, easing: 'cubic-bezier(.5,0,.6,1)' },
+    { duration: state.turbo ? 420 : 700, easing: 'cubic-bezier(.5,0,.6,1)' },
   );
   return anim.finished.then(() => {
     s.remove();
-    fx.burst(pr.left + pr.width / 2, pr.top + pr.height / 2, 10, ['#bfe6ff', '#fff']);
+    fx.burst(tx, ty, 12, ['#bfe6ff', '#fff']);
     audio.shime(undefined, 0.6);
   });
+}
+
+function bonusStats(session: FreeSpinSession, shownWin = session.totalWin): string {
+  return `FREE SPINS ${session.spinsLeft}  ·  DRUM POWER ×${session.multiplier}  ·  BONUS ${fmt(shownWin * bet())}`;
 }
 
 async function runFestival(o: SpinOutcome): Promise<void> {
@@ -334,12 +428,14 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   // Raijin answers the scatters.
   reels.highlight(o.scatters);
   audio.gong();
-  shake(app, 'big');
+  stage.shake('big');
+  stage.top.lightDrums(8);
   for (const [r, row] of o.scatters) {
     const [x, y] = reels.cellCenter(r, row);
-    fx.lightning(x, -10, x, y);
+    fx.lightning(x, 0, x, y);
+    stage.top.strike(0.8);
     audio.thunder(undefined, 0.6);
-    await wait(180);
+    await wait(200);
   }
   await wait(700);
 
@@ -364,26 +460,22 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   // Stage 2.
   const session = new FreeSpinSession(o.freeSpinsAwarded, rhythm.multiplier);
   document.body.classList.add('storm');
-  fx.setPetals(0.15);
-  const bar = $('#fs-bar');
-  bar.hidden = false;
-  const meter = $('#meter');
-  meter.innerHTML = meterHtml();
-  setCharges(meter, 0);
-  $('#fs-mult').textContent = `×${session.multiplier}`;
-  $('#fs-win').textContent = fmt(0);
-  $('#fs-left').textContent = String(session.spinsLeft);
+  stage.setStorm(true);
+  stage.top.lightDrums(0);
+  stage.top.setCharges(0);
+  stage.main.setStats(bonusStats(session));
   setWin(0);
-  msg.textContent = `Drum Storm! Drum power ×${session.multiplier}`;
+  say(`Drum Storm! Drum power ×${session.multiplier}`);
+  audio.gong(undefined, 0.8);
   audio.startLoop();
-  await wait(900);
+  await wait(1000);
 
   let charges = 0;
   while (!session.done) {
     stopWinCycle();
     const before = session.sticky;
     const fs = session.spin(cryptoRng);
-    $('#fs-left').textContent = String(session.spinsLeft);
+    stage.main.setStats(bonusStats(session, session.totalWin - fs.totalWin));
 
     // Locked wilds beat louder before the reels move.
     if (before.length) {
@@ -400,45 +492,58 @@ async function runFestival(o: SpinOutcome): Promise<void> {
       free: true,
       onStop: (r) => {
         audio.reelStop(r);
+        stage.main.drumHit(r);
         const fresh = fs.newWilds.filter((w) => w.reel === r);
         if (fresh.length) {
           shown.push(...fresh);
           reels.setSticky(shown, fresh);
           audio.don(undefined, 1);
           audio.kane(undefined, 0.6);
-          for (const w of fresh) sparks.push(sparkToMeter(w.reel, w.row, ++charges).then(() => setCharges(meter, charges)));
+          for (const w of fresh) {
+            const n = ++charges;
+            sparks.push(sparkToMeter(w.reel, w.row, n).then(() => stage.top.setCharges(n)));
+          }
         }
         const th = fs.thunder.filter(([tr]) => tr === r);
         if (th.length) {
           reels.pulse(th, 'thunder');
           for (const [tr, row] of th) {
             const [x, y] = reels.cellCenter(tr, row);
-            fx.lightning(x, y - 120, x, y, '#9fd8ff');
+            fx.lightning(x, y - 140, x, y, '#9fd8ff');
             audio.thunder(undefined, 0.35);
-            sparks.push(sparkToMeter(tr, row, ++charges).then(() => setCharges(meter, charges)));
+            const n = ++charges;
+            sparks.push(sparkToMeter(tr, row, n).then(() => stage.top.setCharges(n)));
           }
         }
       },
     });
     await Promise.all(sparks);
-    setCharges(meter, fs.charges);
     charges = fs.charges;
+    stage.top.setCharges(charges);
 
     if (fs.totalWin > 0) {
       showWins(fs.wins, [], 0, session.multiplier);
       audio.winSting(fs.totalWin >= 5 ? 2 : 1);
+      if (fs.totalWin >= 1) stage.celebrate(1.4);
       setWin(fs.totalWin * bet());
-      await countUp($('#fs-win'), session.totalWin * bet(), 600, (session.totalWin - fs.totalWin) * bet());
+      const from = session.totalWin - fs.totalWin;
+      await countUp(
+        (v) => stage.main.setStats(`FREE SPINS ${session.spinsLeft}  ·  DRUM POWER ×${session.multiplier}  ·  BONUS ${v}`),
+        session.totalWin * bet(),
+        600,
+        from * bet(),
+      );
       if (fs.totalWin >= 15) await bigWin(fs.totalWin * bet());
     } else {
       setWin(0);
-      msg.textContent = `${session.spinsLeft} free spin${session.spinsLeft === 1 ? '' : 's'} left`;
+      say(`${session.spinsLeft} free spin${session.spinsLeft === 1 ? '' : 's'} left`);
     }
     if (fs.retrigger) {
       audio.gong();
+      stage.top.strike(1);
       toast(`+${fs.retrigger} FREE SPINS`, 'gold');
-      $('#fs-left').textContent = String(session.spinsLeft);
     }
+    stage.main.setStats(bonusStats(session));
     await wait(state.turbo ? 500 : fs.totalWin > 0 ? 1300 : 700);
   }
   stopWinCycle();
@@ -469,9 +574,9 @@ async function runFestival(o: SpinOutcome): Promise<void> {
 
   reels.clearSticky();
   document.body.classList.remove('storm');
-  fx.setPetals(0.6);
-  bar.hidden = true;
-  msg.textContent = `The festival paid ${fmt(total)}`;
+  stage.setStorm(false);
+  stage.main.setStats(null);
+  say(`The festival paid ${fmt(total)}`);
   state.inBonus = false;
   updateHud();
 }
@@ -504,12 +609,13 @@ async function playCrescendo(charges: number, jackpot: string | null, award: num
     fx.lightning(from.left + from.width / 2, from.bottom - 10, to.left + to.width / 2, to.top + to.height / 2);
     audio.thunder(undefined, 0.3 + Math.min(0.5, i / 20));
     audio.don(undefined, 0.7);
-    setCharges(bigMeter, i);
+    setPips(bigMeter, i);
     const tier = JACKPOTS.find((j) => j.need === i);
     if (tier) {
       card.querySelector(`.tier-chip[data-name="${tier.name}"]`)!.classList.add('lit');
       audio.gong(undefined, 0.7);
-      shake(app, 'small');
+      stage.shake('small');
+      stage.top.strike(0.7);
       await wait(450);
     }
     await wait(Math.max(110, 380 - i * 22));
@@ -522,12 +628,14 @@ async function playCrescendo(charges: number, jackpot: string | null, award: num
     audio.gong();
     audio.winSting(3);
     fx.coins(jackpot === 'Grand' ? 200 : 80);
-    shake(app, 'big');
+    stage.shake('big');
+    stage.celebrate(5);
   } else {
     result.textContent = `${charges} charge${charges === 1 ? '' : 's'}. The storm rests, this time.`;
   }
   const btn = card.querySelector<HTMLButtonElement>('[data-close]')!;
   btn.hidden = false;
+  btn.focus();
   await new Promise<void>((r) => btn.addEventListener('click', () => r(), { once: true }));
   closeModal();
 }
@@ -554,6 +662,8 @@ function showInfo(): void {
        <li><b>Drum Storm:</b> wilds lock in place. Each locked wild gains +1× per spin (max ×${STICKY_MULT_CAP}); a way uses its highest wild multiplier. 3+ 雷 add more spins.</li>
        <li><b>Raijin's Crescendo:</b> each new wild and each 雷 adds a charge. ${JACKPOTS.map((j) => `${j.need}+ = ${j.name} (${j.pay}× bet)`).join(', ')}.</li>
      </ol>
+     <h3>Controls</h3>
+     <p>Space spins. A toggles autoplay, T toggles turbo, M mutes, I opens this page.</p>
      <p class="fine">A play-money demo. No real money, no purchases. Theoretical RTP is about 96% at average rhythm skill.</p>
      <button class="btn primary" data-close>Back to the drums</button>`,
     'info',
@@ -562,52 +672,32 @@ function showInfo(): void {
 
 // ---- Wiring ---------------------------------------------------------------
 
-$('#spin').addEventListener('click', () => {
-  if (state.auto) {
-    state.auto = false;
-    updateHud();
-    return;
-  }
-  void spin();
-});
-$('#auto').addEventListener('click', () => {
-  if (state.inBonus) return;
-  state.auto = !state.auto;
-  updateHud();
-  if (state.auto) void spin();
-});
-$('#turbo').addEventListener('click', () => {
-  state.turbo = !state.turbo;
-  updateHud();
-  save();
-});
-$('#sound').addEventListener('click', () => {
-  audio.unlock();
-  state.muted = !state.muted;
-  audio.setMuted(state.muted);
-  updateHud();
-  save();
-});
-$('#info').addEventListener('click', () => !state.busy && !state.inBonus && showInfo());
-$('#bet-down').addEventListener('click', () => {
-  state.betIndex = Math.max(0, state.betIndex - 1);
-  audio.unlock();
-  audio.ka();
-  updateHud();
-  save();
-});
-$('#bet-up').addEventListener('click', () => {
-  state.betIndex = Math.min(BETS.length - 1, state.betIndex + 1);
-  audio.unlock();
-  audio.ka();
-  updateHud();
-  save();
-});
+$('#a11y-spin').addEventListener('click', onSpinPressed);
+$('#a11y-bet-down').addEventListener('click', () => changeBet(-1));
+$('#a11y-bet-up').addEventListener('click', () => changeBet(1));
+$('#a11y-auto').addEventListener('click', onAuto);
+$('#a11y-turbo').addEventListener('click', onTurbo);
+$('#a11y-sound').addEventListener('click', onSound);
+$('#a11y-info').addEventListener('click', onInfo);
+
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Space' || !modal.hidden || state.inBonus) return;
+  if (!modal.hidden || state.inBonus || e.repeat) return;
+  if (e.target instanceof HTMLButtonElement && (e.code === 'Space' || e.code === 'Enter')) return;
+  const keys: Record<string, () => void> = {
+    Space: () => {
+      stage.deck.strike();
+      onSpinPressed();
+    },
+    KeyA: onAuto,
+    KeyT: onTurbo,
+    KeyM: onSound,
+    KeyI: onInfo,
+  };
+  const fn = keys[e.code];
+  if (!fn) return;
   e.preventDefault();
-  void spin();
+  fn();
 });
 
 updateHud();
-msg.textContent = `243 ways · 3+ 雷 start the Festival of a Thousand Drums`;
+say('243 ways · 3+ 雷 start the Festival of a Thousand Drums');

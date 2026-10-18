@@ -9,71 +9,21 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23b3201b'/><circle cx='50' cy='50' r='36' fill='%23f3e3bd'/><text x='50' y='54' font-size='44' text-anchor='middle' dominant-baseline='central' fill='%23b3201b'>雷</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;900&family=Cinzel:wght@700;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;900&family=Cinzel:wght@700;900&family=Yuji+Syuku&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="app">
-      <header class="top">
-        <div class="logo">
-          <span class="logo-jp">太鼓雷</span>
-          <span class="logo-en">Taiko Thunder</span>
-        </div>
-        <div class="jackpots" aria-label="Raijin jackpots">
-          <div class="jp grand"><span>Grand</span><b data-jp="Grand"></b></div>
-          <div class="jp major"><span>Major</span><b data-jp="Major"></b></div>
-          <div class="jp minor"><span>Minor</span><b data-jp="Minor"></b></div>
-          <div class="jp mini"><span>Mini</span><b data-jp="Mini"></b></div>
-        </div>
-      </header>
-
-      <section id="fs-bar" class="fs-bar" hidden>
-        <div class="fs-stats">
-          <div class="fs-stat"><span class="label">Free spins</span><b id="fs-left">0</b></div>
-          <div class="fs-stat"><span class="label">Drum power</span><b id="fs-mult">×1</b></div>
-          <div class="fs-stat"><span class="label">Bonus win</span><b id="fs-win">0.00</b></div>
-        </div>
-        <div class="meter" id="meter" aria-label="Raijin drum meter"></div>
-      </section>
-
-      <main class="machine">
-        <div class="frame">
-          <div class="frame-top" aria-hidden="true"><span>千の太鼓</span></div>
-          <div class="reels" id="reels"></div>
-        </div>
-        <p class="msg" id="msg" aria-live="polite"></p>
-      </main>
-
-      <footer class="hud">
-        <div class="readout bal"><span class="label">Balance</span><b id="balance"></b></div>
-        <div class="bet">
-          <button id="bet-down" class="round" aria-label="Lower bet">−</button>
-          <div class="readout"><span class="label">Bet</span><b id="bet"></b></div>
-          <button id="bet-up" class="round" aria-label="Raise bet">+</button>
-        </div>
-        <div class="readout winr"><span class="label">Win</span><b id="win">0.00</b></div>
-        <div class="toggles left">
-          <button id="auto" class="pill">AUTO</button>
-          <button id="turbo" class="pill">TURBO</button>
-        </div>
-        <button id="spin" class="spin-drum" aria-label="Spin (Space)">
-          <svg viewBox="0 0 100 100" aria-hidden="true">
-            <circle cx="50" cy="50" r="47" fill="#7a1512" stroke="#f3c75a" stroke-width="3" />
-            <circle cx="50" cy="50" r="38" fill="#f3e3bd" />
-            <g fill="#b3201b">
-              <path d="M 0 -42 A 42 42 0 0 1 36.4 21 A 46 46 0 0 0 17 -26 A 16 16 0 1 1 0 -42 Z" transform="translate(50 50) scale(.82)" />
-              <path d="M 0 -42 A 42 42 0 0 1 36.4 21 A 46 46 0 0 0 17 -26 A 16 16 0 1 1 0 -42 Z" transform="translate(50 50) rotate(120) scale(.82)" />
-              <path d="M 0 -42 A 42 42 0 0 1 36.4 21 A 46 46 0 0 0 17 -26 A 16 16 0 1 1 0 -42 Z" transform="translate(50 50) rotate(240) scale(.82)" />
-            </g>
-          </svg>
-          <span class="spin-label">SPIN</span>
-        </button>
-        <div class="toggles right">
-          <button id="sound" class="pill">SOUND ON</button>
-          <button id="info" class="pill">INFO</button>
-        </div>
-      </footer>
-    </div>
-
+    <div id="stage"></div>
+    <nav class="sr-only" aria-label="Machine controls">
+      <p id="a11y-balance"></p>
+      <button id="a11y-spin">Spin</button>
+      <button id="a11y-bet-down">Lower bet</button>
+      <button id="a11y-bet-up">Raise bet</button>
+      <button id="a11y-auto">Autoplay</button>
+      <button id="a11y-turbo">Turbo</button>
+      <button id="a11y-sound">Sound</button>
+      <button id="a11y-info">How to play</button>
+    </nav>
+    <p id="live" class="sr-only" aria-live="polite"></p>
     <canvas id="fx" aria-hidden="true"></canvas>
     <div id="toast" role="status"></div>
     <div id="bigwin" hidden></div>

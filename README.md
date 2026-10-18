@@ -59,12 +59,60 @@ Typical results over 4M spins, at average rhythm skill:
 
 Skilled rhythm play raises the RTP, by design.
 
+## Presentation
+
+The game renders as a three-screen cabinet in WebGL using PixiJS, with GSAP
+for timing.
+
+- **Top screen** (`src/stage/top.ts`): a 2.5D festival night with parallax
+  mountains, a shrine, mist, swaying lanterns and falling petals (rain during
+  the bonus). Raijin's ring of drums orbits the logo. Lit jackpot plaques sit
+  at the bottom, and during free spins the drum meter appears above them.
+- **Main screen** (`src/stage/main-screen.ts`, `src/stage/reels.ts`): reels in
+  a lacquered drum-hoop frame with cylinder shading and real motion blur.
+  - Reels accelerate, cruise, then overshoot and settle, with no jumps in
+    speed.
+  - Each reel stop kicks up dust and petals and hits the side drums.
+  - When a third 雷 could still land, the remaining reel is caged in
+    lightning, the other reels dim and the camera pushes in.
+- **Button deck** (`src/stage/deck.ts`): the credit and win meters, a koban
+  coin stack for the bet, and the big drum, which bachi strike when you spin.
+- One beat clock (`src/stage/beat.ts`) drives the lantern sway, the LED strips
+  and the drum pulses.
+- All art is code-built with canvas painters (`src/stage/paint.ts`).
+
+### Adding painted backdrops
+
+Put `backdrop-festival.jpg` (and optionally `backdrop-storm.jpg`) in
+`src/assets/`. The top screen uses them in place of the procedural mountains
+and shrine. Wide 16:9 paintings work best.
+
+### Accessibility and performance
+
+- The canvas is backed by a screen-reader control panel and a live region for
+  game messages.
+- Keyboard: Space spins, A autoplay, T turbo, M mute, I info.
+- Motion is reduced when the device asks for it.
+- If the first seconds render below 30 fps, the game drops bloom and renders
+  at 1× resolution.
+
+## Publishing as an artifact
+
+```bash
+npm run artifact -- <out-dir>
+```
+
+This writes `taiko-thunder.html` with the CSS inlined, plus the script chunks
+in `assets/`. Publish the page with those files alongside it. The chunks stay
+separate because a single merged bundle breaks Pixi's lazy-loaded renderer
+modules.
+
 ## Tech
 
-Vite + TypeScript with no runtime dependencies.
+Vite + TypeScript, PixiJS 8 and pixi-filters for rendering, and GSAP for
+animation timing. The maths in `src/math/` has no dependencies.
 
-- Reels are DOM elements animated with the Web Animations API.
-- Effects (petals, sparks, coins, lightning) run on a canvas.
+- The bonus dialogs and big-win overlays are still DOM for now.
 - All sound (taiko, rim clicks, shime, kane, gong, thunder, koto stings and the
   festival groove) is synthesized live with Web Audio, so there are no audio
   assets.
