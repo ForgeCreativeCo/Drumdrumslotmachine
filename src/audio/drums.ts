@@ -1,0 +1,203 @@
+/**
+ * Every sound in the game is synthesized here with Web Audio, so there are no
+ * audio assets to load or license.
+ */
+
+// In-scale (miyako-bushi) pentatonic on D, for koto-style stings.
+const IN_SCALE = [293.66, 311.13, 392.0, 440.0, 466.16, 587.33, 622.25, 783.99, 880.0, 932.33];
+
+export class DrumAudio {
+  private ctx: AudioContext | null = null;
+  private master!: GainNode;
+  private noise!: AudioBuffer;
+  private loopTimer: number | null = null;
+  muted = false;
+
+  /** Must be called from a user gesture before anything is audible. */
+  unlock(): void {
+    if (!this.ctx) {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      this.ctx = new Ctx();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.8;
+      const comp = this.ctx.createDynamicsCompressor();
+      comp.threshold.value = -12;
+      comp.ratio.value = 4;
+      this.master.connect(comp).connect(this.ctx.destination);
+      this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+      const data = this.noise.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+  }
+
+  /** Current audio clock in seconds (falls back to wall clock if audio is unavailable). */
+  now(): number {
+    return this.ctx ? this.ctx.currentTime : performance.now() / 1000;
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.ctx) this.master.gain.setTargetAtTime(muted ? 0 : 0.8, this.ctx.currentTime, 0.02);
+  }
+
+  private env(t: number, peak: number, attack: number, decay: number): GainNode {
+    const g = this.ctx!.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    g.connect(this.master);
+    return g;
+  }
+
+  private noiseBurst(t: number, freq: number, q: number, peak: number, decay: number, type: BiquadFilterType = 'bandpass'): void {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    src.connect(f).connect(this.env(t, peak, 0.002, decay));
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + decay + 0.05);
+  }
+
+  private tone(t: number, type: OscillatorType, f0: number, f1: number, peak: number, decay: number, attack = 0.003): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + decay * 0.8);
+    o.connect(this.env(t, peak, attack, decay));
+    o.start(t);
+    o.stop(t + attack + decay + 0.05);
+  }
+
+  /** Big drum centre hit ("don"). */
+  don(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    this.tone(t, 'sine', 120, 52, 0.9 * vel, 0.55);
+    this.tone(t, 'triangle', 190, 90, 0.25 * vel, 0.18);
+    this.noiseBurst(t, 600, 0.8, 0.35 * vel, 0.08, 'lowpass');
+  }
+
+  /** Rim click ("ka"). */
+  ka(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    this.noiseBurst(t, 3200, 3, 0.5 * vel, 0.05);
+    this.tone(t, 'square', 900, 700, 0.06 * vel, 0.04);
+  }
+
+  /** Tight high shime-daiko. */
+  shime(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    this.tone(t, 'sine', 420, 330, 0.35 * vel, 0.12);
+    this.noiseBurst(t, 1800, 2, 0.25 * vel, 0.04);
+  }
+
+  /** Small hand gong (kane): inharmonic bell partials. */
+  kane(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    for (const [f, a] of [[1180, 0.12], [1840, 0.08], [2630, 0.05], [3410, 0.03]] as const) {
+      this.tone(t, 'sine', f, f, a * vel, 0.7, 0.001);
+    }
+  }
+
+  /** Deep temple gong for scatters and the bonus. */
+  gong(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    for (const [f, a] of [[82, 0.5], [123.5, 0.3], [167, 0.22], [211, 0.15], [297, 0.1], [409, 0.06]] as const) {
+      this.tone(t, 'sine', f * 1.01, f, a * vel, 3.2, 0.02);
+    }
+    this.noiseBurst(t, 300, 0.5, 0.2 * vel, 0.6, 'lowpass');
+  }
+
+  /** Crack of thunder for Raijin's lightning. */
+  thunder(at?: number, vel = 1): void {
+    if (!this.ctx) return;
+    const t = at ?? this.ctx.currentTime;
+    this.noiseBurst(t, 4000, 0.3, 0.6 * vel, 0.15, 'highpass');
+    this.noiseBurst(t + 0.02, 180, 0.4, 0.9 * vel, 1.4, 'lowpass');
+    this.tone(t, 'sine', 60, 35, 0.6 * vel, 1.2);
+  }
+
+  reelStop(index: number): void {
+    if (!this.ctx) return;
+    this.don(undefined, 0.35 + index * 0.04);
+  }
+
+  /** Accelerating drum roll, used for anticipation. Returns its length in seconds. */
+  roll(duration = 1.4): number {
+    if (!this.ctx) return duration;
+    const t0 = this.ctx.currentTime;
+    let t = 0;
+    let gap = 0.12;
+    while (t < duration) {
+      this.shime(t0 + t, 0.4 + 0.6 * (t / duration));
+      t += gap;
+      gap = Math.max(0.035, gap * 0.93);
+    }
+    return duration;
+  }
+
+  /** Koto-like pluck. */
+  pluck(at: number, freq: number, vel = 1): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = freq;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(freq * 8, at);
+    f.frequency.exponentialRampToValueAtTime(freq * 1.5, at + 0.4);
+    o.connect(f).connect(this.env(at, 0.18 * vel, 0.004, 0.9));
+    o.start(at);
+    o.stop(at + 1);
+  }
+
+  /** Short rising koto sting; `size` 0..3 makes it longer. */
+  winSting(size = 0): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const notes = [0, 2, 3, 5, 7, 9].slice(0, 3 + size);
+    notes.forEach((n, i) => this.pluck(t + i * 0.09, IN_SCALE[n]));
+    if (size >= 2) this.don(t + notes.length * 0.09, 0.9);
+  }
+
+  /** Festival groove for the free spins: don . ka don | don ka ka . */
+  startLoop(bpm = 132): void {
+    if (!this.ctx || this.loopTimer !== null) return;
+    const step = 60 / bpm / 2;
+    const pattern = 'D.kDD.kkD.kDDkDk';
+    let next = this.ctx.currentTime + 0.1;
+    let i = 0;
+    const schedule = () => {
+      if (!this.ctx) return;
+      while (next < this.ctx.currentTime + 0.25) {
+        const c = pattern[i % pattern.length];
+        if (c === 'D') this.don(next, 0.45);
+        else if (c === 'k') this.ka(next, 0.35);
+        if (i % 16 === 0) this.kane(next, 0.4);
+        if (i % 4 === 2) this.shime(next, 0.15);
+        next += step;
+        i++;
+      }
+    };
+    schedule();
+    this.loopTimer = window.setInterval(schedule, 60);
+  }
+
+  stopLoop(): void {
+    if (this.loopTimer !== null) window.clearInterval(this.loopTimer);
+    this.loopTimer = null;
+  }
+}
+
+export const audio = new DrumAudio();
