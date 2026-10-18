@@ -86,6 +86,12 @@ export class TopScreen extends Container {
   private drums: RingDrum[] = [];
   private emblem = new Container();
   private emblemGlow!: Sprite;
+  private logo!: Text;
+  private raijin!: Text;
+  private power = new Container();
+  private powerValue!: Text;
+  private sparks = new Particles();
+  private ringSpeed = 1;
   private ribbon = new Container();
   private plaques = new Container();
   private plaqueValues = new Map<string, Text>();
@@ -146,6 +152,8 @@ export class TopScreen extends Container {
       [this.weather, 1.1],
       [this.ring, 0],
       [this.ribbon, 0],
+      [this.power, 0],
+      [this.sparks, 0],
       [this.lanternLayer, 1.35],
       [this.meter, 0],
       [this.plaques, 0],
@@ -197,9 +205,20 @@ export class TopScreen extends Container {
     }
     this.emblemGlow = new Sprite({ texture: t.glow, anchor: 0.5, tint: 0xff7a30, blendMode: 'add', alpha: 0.6 });
     this.emblemGlow.scale.set(4.2, 3);
-    const kanji = brushText(150, '太鼓雷');
-    kanji.y = -6;
-    this.emblem.addChild(this.emblemGlow, kanji);
+    this.logo = brushText(150, '太鼓雷');
+    this.logo.y = -6;
+    this.raijin = brushText(
+      190,
+      '雷神',
+      linear([
+        [0, '#ffffff'],
+        [0.5, '#bfe6ff'],
+        [1, '#4f84e8'],
+      ]),
+    );
+    this.raijin.y = -10;
+    this.raijin.alpha = 0;
+    this.emblem.addChild(this.emblemGlow, this.logo, this.raijin);
     this.emblem.zIndex = 0.5;
     this.ring.addChild(this.emblem);
 
@@ -222,6 +241,17 @@ export class TopScreen extends Container {
       anchor: 0.5,
     });
     this.ribbon.addChild(band, name);
+
+    const plate = new Graphics()
+      .roundRect(-230, -78, 460, 156, 40)
+      .fill({ color: 0x050a20, alpha: 0.75 })
+      .stroke({ width: 4, fill: GOLD() });
+    const label = labelText(22, 'DRUM POWER', '#bfe6ff');
+    label.y = -50;
+    this.powerValue = moneyText(110, '×1');
+    this.powerValue.y = 14;
+    this.power.addChild(plate, label, this.powerValue);
+    this.power.visible = false;
   }
 
   private buildPlaques(): void {
@@ -374,6 +404,8 @@ export class TopScreen extends Container {
     this.ring.scale.set(k);
     this.ribbon.position.set(W / 2, cy + 250 * k);
     this.ribbon.scale.set(Math.max(0.8, k));
+    this.power.position.set(W / 2, cy + 250 * k);
+    this.power.scale.set(Math.max(0.7, k));
     const plaqueY = h - 82;
     const order = ['Mini', 'Minor', 'Grand', 'Major'];
     const widths = order.map((n) => TIER_STYLE[n].w);
@@ -390,6 +422,93 @@ export class TopScreen extends Container {
       const o = this.meter.children[i];
       o.position.set(110 + t * (W - 220), mY - Math.sin(t * Math.PI) * 28);
     });
+  }
+
+  /** Raijin takes the logo's place in the ring for the bonus. */
+  awaken(on: boolean): void {
+    gsap.killTweensOf([this.logo, this.raijin, this.raijin.scale]);
+    if (on) {
+      gsap.to(this.logo, { alpha: 0, duration: 0.3 });
+      gsap.to(this.raijin, { alpha: 1, duration: 0.3 });
+      gsap.fromTo(this.raijin.scale, { x: 0.3, y: 0.3 }, { x: 1, y: 1, duration: 1.1, ease: 'elastic.out(1, 0.5)' });
+      this.boostRing(5, 2.5);
+    } else {
+      gsap.to(this.logo, { alpha: 1, duration: 0.5 });
+      gsap.to(this.raijin, { alpha: 0, duration: 0.5 });
+    }
+  }
+
+  /** Spin the drum ring faster for a while. */
+  boostRing(factor: number, seconds: number): void {
+    gsap.killTweensOf(this, 'ringSpeed');
+    gsap
+      .timeline()
+      .to(this, { ringSpeed: factor, duration: 0.4, ease: 'power2.in' })
+      .to(this, { ringSpeed: 1, duration: seconds, ease: 'power2.out' });
+  }
+
+  /** Show the bonus multiplier in place of the title ribbon (null hides it). */
+  showPower(mult: number | null): void {
+    if (mult === null) {
+      this.power.visible = false;
+      this.ribbon.visible = true;
+      return;
+    }
+    this.ribbon.visible = false;
+    this.power.visible = true;
+    const text = `×${mult}`;
+    if (this.powerValue.text !== text) {
+      this.powerValue.text = text;
+      gsap.fromTo(this.powerValue.scale, { x: 1.35, y: 1.35 }, { x: 1, y: 1, duration: 0.35, ease: 'back.out(3)' });
+    }
+  }
+
+  /** Fireworks over the festival sky. */
+  fireworks(count = 1): void {
+    const t = tex();
+    const colors = [0xffd86b, 0xff6a4e, 0x9fd8ff, 0xffffff, 0xb98cff];
+    for (let f = 0; f < count; f++) {
+      const x = 140 + Math.random() * (W - 280);
+      const y = 60 + Math.random() * this.h * 0.35;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      for (let i = 0; i < 26; i++) {
+        const a = (i / 26) * Math.PI * 2;
+        const sp = 180 + Math.random() * 60;
+        this.sparks.spawn(t.glowHard, {
+          x,
+          y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          gravity: 120,
+          drag: 1.6,
+          life: 1.1,
+          scale: 0.16,
+          endScale: 0.03,
+          tint: color,
+          additive: true,
+        });
+      }
+    }
+  }
+
+  /** Make one jackpot plaque flare as its tier is reached. */
+  flarePlaque(name: string): void {
+    const c = this.plaques.getChildByLabel(name);
+    if (!c) return;
+    gsap.fromTo(c.scale, { x: 1.25, y: 1.25 }, { x: 1, y: 1, duration: 0.6, ease: 'elastic.out(1, 0.4)' });
+    const p = c.getGlobalPosition();
+    const local = this.toLocal(p);
+    const f = new Sprite({ texture: tex().glow, anchor: 0.5, tint: 0xffd86b, blendMode: 'add' });
+    f.position.set(local.x, local.y);
+    f.scale.set(4, 2);
+    this.addChild(f);
+    gsap.to(f, { alpha: 0, duration: 1.2, onComplete: () => f.destroy() });
+  }
+
+  /** A point in the sky above the ring, in viewport coordinates. */
+  skyPoint(): [number, number] {
+    const p = this.toGlobal({ x: 140 + Math.random() * (W - 280), y: 0 });
+    return [p.x, p.y];
   }
 
   /** Drop the bloom pass on slow devices. */
@@ -494,7 +613,8 @@ export class TopScreen extends Container {
     }
 
     // Raijin's ring: drums orbit the emblem on a tilted ellipse.
-    this.ringAngle += dt * (this.storm ? 0.55 : 0.22);
+    this.ringAngle += dt * (this.storm ? 0.55 : 0.22) * this.ringSpeed;
+    this.sparks.update(dt);
     const rx = 420;
     const ry = 135;
     for (const d of this.drums) {

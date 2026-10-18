@@ -3,6 +3,7 @@ import type { SymbolId } from '../math/symbols';
 import {
   makeCanvas,
   paintGlow,
+  paintKoban,
   paintLantern,
   paintPetal,
   paintReelShade,
@@ -25,6 +26,7 @@ export interface TextureSet {
   drumWood: Texture;
   drumStorm: Texture;
   spinDrum: Texture;
+  koban: Texture;
 }
 
 let set: TextureSet | null = null;
@@ -68,6 +70,7 @@ export function buildTextures(): TextureSet {
     drumWood: Texture.from(paintTaiko({ width: 220, tilt: 0.42, body: 'wood' })),
     drumStorm: Texture.from(paintTaiko({ width: 220, tilt: 0.42, body: 'storm' })),
     spinDrum: Texture.from(paintTaiko({ width: 340, tilt: 0.62, body: 'lacquer' })),
+    koban: Texture.from(paintKoban()),
   };
   return set;
 }

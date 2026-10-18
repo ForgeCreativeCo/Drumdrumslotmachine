@@ -230,9 +230,3 @@ function jagged(x1: number, y1: number, x2: number, y2: number, depth: number): 
   }
   return pts;
 }
-
-export function shake(el: HTMLElement, strength: 'small' | 'big' = 'small'): void {
-  el.classList.remove('shake-small', 'shake-big');
-  void el.offsetWidth;
-  el.classList.add(`shake-${strength}`);
-}

@@ -6,8 +6,9 @@ import { RHYTHM } from './math/rhythm';
 import { cryptoRng } from './math/rng';
 import { PAYING_SYMBOLS, PAYTABLE, SCATTER_PAY, SYMBOLS } from './math/symbols';
 import { Fx } from './ui/fx';
-import { playSummoning } from './ui/rhythm-ui';
+import { crescendo, festivalIntro, festivalSummary } from './stage/festival-panels';
 import { paintSymbol } from './stage/paint';
+import { playSummoning } from './stage/summoning';
 import { Stage } from './stage/stage';
 
 const BETS = [0.2, 0.5, 1, 2, 5, 10, 20, 50];
@@ -132,7 +133,7 @@ const stage = await Stage.create($('#stage'), {
 });
 const reels = stage.main.reels;
 // Dev-only handle for poking the stage from the console or test scripts.
-if (import.meta.env.DEV) (window as unknown as { __taiko: unknown }).__taiko = { stage, reels };
+if (import.meta.env.DEV) (window as unknown as { __taiko: unknown }).__taiko = { stage, reels, crescendo, festivalSummary };
 
 function updateHud(): void {
   stage.deck.setBalance(fmt(state.balance));
@@ -399,40 +400,9 @@ async function outOfCredits(): Promise<void> {
 
 // ---- The Festival of a Thousand Drums ------------------------------------
 
-const MAX_PIPS = JACKPOTS[JACKPOTS.length - 1].need;
-
-function meterHtml(): string {
-  const pips = Array.from({ length: MAX_PIPS }, (_, i) => {
-    const tier = JACKPOTS.find((j) => j.need === i + 1);
-    return `<span class="pip${tier ? ` tier tier-${tier.name.toLowerCase()}` : ''}" data-i="${i + 1}">${
-      tier ? `<em>${tier.name}</em>` : ''
-    }</span>`;
-  }).join('');
-  return `<div class="pips">${pips}</div>`;
-}
-
-function setPips(root: HTMLElement, charges: number): void {
-  root.querySelectorAll<HTMLElement>('.pip').forEach((p) => p.classList.toggle('lit', Number(p.dataset.i) <= charges));
-}
-
 /** Fly a spark from a cell up into Raijin's drum meter on the top screen. */
 function sparkToMeter(reel: number, row: number, charge: number): Promise<void> {
-  const [x, y] = reels.cellCenter(reel, row);
-  const [tx, ty] = stage.top.meterPoint(Math.min(charge, MAX_PIPS));
-  const s = document.createElement('div');
-  s.className = 'spark';
-  document.body.appendChild(s);
-  const anim = s.animate(
-    [
-      { transform: `translate(${x}px, ${y}px) scale(1.6)`, opacity: 1 },
-      { transform: `translate(${(x + tx) / 2 + 40}px, ${(y + ty) / 2}px) scale(1.1)`, opacity: 1, offset: 0.5 },
-      { transform: `translate(${tx}px, ${ty}px) scale(.6)`, opacity: 0.9 },
-    ],
-    { duration: state.turbo ? 420 : 700, easing: 'cubic-bezier(.5,0,.6,1)' },
-  );
-  return anim.finished.then(() => {
-    s.remove();
-    fx.burst(tx, ty, 12, ['#bfe6ff', '#fff']);
+  return stage.flyTo(reels.cellCenter(reel, row), stage.top.meterPoint(charge), 0x9fd8ff, state.turbo ? 0.4 : 0.65).then(() => {
     audio.shime(undefined, 0.6);
   });
 }
@@ -441,55 +411,55 @@ function bonusStats(session: FreeSpinSession, shownWin = session.totalWin): stri
   return `FREE SPINS ${session.spinsLeft}  ·  DRUM POWER ×${session.multiplier}  ·  BONUS ${fmt(shownWin * bet())}`;
 }
 
-async function runFestival(o: SpinOutcome): Promise<void> {
-  state.inBonus = true;
-  updateHud();
-  stopWinCycle();
-
-  // Raijin answers the scatters.
+/** Raijin answers the scatters, then a thunderclap relights the cabinet as a storm. */
+async function stormArrives(o: SpinOutcome): Promise<void> {
   reels.highlight(o.scatters);
   audio.gong();
   stage.shake('big');
   stage.top.lightDrums(8);
   for (const [r, row] of o.scatters) {
-    const [x, y] = reels.cellCenter(r, row);
-    fx.lightning(x, 0, x, y);
+    stage.bolt([stage.top.skyPoint(), reels.cellCenter(r, row)], 0xdff4ff, 0.5, 7);
+    stage.burst(reels.cellCenter(r, row), 0xbfe6ff, 30);
     stage.top.strike(0.8);
     audio.thunder(undefined, 0.6);
-    await wait(200);
+    await wait(260);
   }
-  await wait(700);
+  await wait(600);
+  audio.thunder(undefined, 1);
+  await stage.flash(() => {
+    reels.clearHighlight();
+    stage.setStorm(true);
+    stage.top.lightDrums(0);
+    stage.top.awaken(true);
+    stage.top.setCharges(0);
+  });
+  audio.gong(undefined, 0.9);
+  stage.shake('big');
+}
 
-  await modalChoice(
-    `<p class="stage-tag">千の太鼓祭り</p>
-     <h2>Festival of a Thousand Drums</h2>
-     <p class="lead">${o.scatters.length} Thunder drums summon <b>${o.freeSpinsAwarded} free spins</b>.</p>
-     <ol class="stages">
-       <li><b>The Summoning.</b> Drum in time to set your Drum Power, from ×${RHYTHM.min} up to ×${RHYTHM.max} on every free-spin win.</li>
-       <li><b>Drum Storm.</b> Taiko Wilds lock in place and beat harder each spin, up to ×${STICKY_MULT_CAP}.</li>
-       <li><b>Raijin's Crescendo.</b> Every new wild and every 雷 charges Raijin's drums. Fill them for a jackpot.</li>
-     </ol>
-     <button class="btn primary" data-close>Summon the drums</button>`,
-    'festival',
-  );
+async function runFestival(o: SpinOutcome): Promise<void> {
+  state.inBonus = true;
+  updateHud();
+  stopWinCycle();
+  say('Raijin awakens!');
+
+  await stormArrives(o);
+  say(`Festival of a Thousand Drums · ${o.freeSpinsAwarded} free spins`);
+  await festivalIntro(stage, o.scatters.length, o.freeSpinsAwarded);
 
   // Stage 1.
-  const card = openModal('', 'summoning');
-  const rhythm = await playSummoning(card);
-  closeModal();
+  say('The Summoning');
+  const rhythm = await playSummoning(stage);
+  await stage.main.closePanel();
 
   // Stage 2.
   const session = new FreeSpinSession(o.freeSpinsAwarded, rhythm.multiplier);
-  document.body.classList.add('storm');
-  stage.setStorm(true);
-  stage.top.lightDrums(0);
-  stage.top.setCharges(0);
+  stage.top.showPower(session.multiplier);
   stage.main.setStats(bonusStats(session));
   setWin(0);
   say(`Drum Storm! Drum power ×${session.multiplier}`);
-  audio.gong(undefined, 0.8);
   audio.startLoop();
-  await wait(1000);
+  await wait(800);
 
   let charges = 0;
   while (!session.done) {
@@ -529,8 +499,8 @@ async function runFestival(o: SpinOutcome): Promise<void> {
         if (th.length) {
           reels.pulse(th, 'thunder');
           for (const [tr, row] of th) {
-            const [x, y] = reels.cellCenter(tr, row);
-            fx.lightning(x, y - 140, x, y, '#9fd8ff');
+            const at = reels.cellCenter(tr, row);
+            stage.bolt([stage.top.skyPoint(), at], 0xbfe6ff, 0.4, 5);
             audio.thunder(undefined, 0.35);
             const n = ++charges;
             sparks.push(sparkToMeter(tr, row, n).then(() => stage.top.setCharges(n)));
@@ -562,6 +532,7 @@ async function runFestival(o: SpinOutcome): Promise<void> {
     if (fs.retrigger) {
       audio.gong();
       stage.top.strike(1);
+      stage.top.fireworks(3);
       toast(`+${fs.retrigger} FREE SPINS`, 'gold');
     }
     stage.main.setStats(bonusStats(session));
@@ -573,92 +544,33 @@ async function runFestival(o: SpinOutcome): Promise<void> {
   // Stage 3.
   const spinsWin = session.totalWin;
   const cres = session.crescendo();
-  await playCrescendo(cres.charges, cres.jackpot?.name ?? null, cres.award);
+  say("Raijin's Crescendo");
+  await crescendo(stage, cres.charges, cres.jackpot?.name ?? null, fmt(cres.award * bet()), (x) => fmt(x * bet()));
 
   const total = session.totalWin * bet();
-  await modalChoice(
-    `<p class="stage-tag">祭り完了</p><h2>Festival complete</h2>
-     <dl class="summary">
-       <dt>Drum power</dt><dd>×${session.multiplier}</dd>
-       <dt>Free spins played</dt><dd>${session.spinsPlayed}</dd>
-       <dt>Drum Storm wins</dt><dd>${fmt(spinsWin * bet())}</dd>
-       <dt>Crescendo</dt><dd>${cres.jackpot ? `${cres.jackpot.name} · ${fmt(cres.award * bet())}` : 'No jackpot'}</dd>
-       <dt class="total">Total</dt><dd class="total">${fmt(total)}</dd>
-     </dl>
-     <button class="btn primary" data-close>Collect</button>`,
-    'festival',
-  );
+  await festivalSummary(stage, {
+    multiplier: session.multiplier,
+    spins: session.spinsPlayed,
+    spinsWin: fmt(spinsWin * bet()),
+    crescendo: cres.jackpot ? `${cres.jackpot.name} · ${fmt(cres.award * bet())}` : 'No jackpot',
+    total: fmt(total),
+  });
+  await stage.main.closePanel();
   await bigWin(total);
   state.balance += total;
   setWin(total);
   save();
 
   reels.clearSticky();
-  document.body.classList.remove('storm');
-  stage.setStorm(false);
-  stage.main.setStats(null);
+  await stage.flash(() => {
+    stage.setStorm(false);
+    stage.top.awaken(false);
+    stage.top.showPower(null);
+    stage.main.setStats(null);
+  }, 0xfff1c2, 0.05);
   say(`The festival paid ${fmt(total)}`);
   state.inBonus = false;
   updateHud();
-}
-
-async function playCrescendo(charges: number, jackpot: string | null, award: number): Promise<void> {
-  const tiers = JACKPOTS.map(
-    (j) =>
-      `<div class="tier-chip tier-${j.name.toLowerCase()}" data-name="${j.name}"><span>${j.name}</span><b>${fmt(j.pay * bet())}</b><small>${j.need}</small></div>`,
-  ).join('');
-  const card = openModal(
-    `<p class="stage-tag">Stage 3 · 雷神</p>
-     <h2>Raijin's Crescendo</h2>
-     <div class="raijin" aria-hidden="true">雷神</div>
-     <div class="big-meter">${meterHtml()}</div>
-     <div class="tier-row">${tiers}</div>
-     <p class="cres-result" aria-live="polite">${charges} charge${charges === 1 ? '' : 's'}…</p>
-     <button class="btn primary" data-close hidden>Continue</button>`,
-    'crescendo',
-  );
-  const bigMeter = card.querySelector<HTMLElement>('.big-meter')!;
-  const raijin = card.querySelector<HTMLElement>('.raijin')!;
-  await wait(800);
-  audio.roll(1.2);
-  await wait(1000);
-
-  for (let i = 1; i <= charges; i++) {
-    const pip = bigMeter.querySelector<HTMLElement>(`.pip[data-i="${Math.min(i, MAX_PIPS)}"]`)!;
-    const from = raijin.getBoundingClientRect();
-    const to = pip.getBoundingClientRect();
-    fx.lightning(from.left + from.width / 2, from.bottom - 10, to.left + to.width / 2, to.top + to.height / 2);
-    audio.thunder(undefined, 0.3 + Math.min(0.5, i / 20));
-    audio.don(undefined, 0.7);
-    setPips(bigMeter, i);
-    const tier = JACKPOTS.find((j) => j.need === i);
-    if (tier) {
-      card.querySelector(`.tier-chip[data-name="${tier.name}"]`)!.classList.add('lit');
-      audio.gong(undefined, 0.7);
-      stage.shake('small');
-      stage.top.strike(0.7);
-      await wait(450);
-    }
-    await wait(Math.max(110, 380 - i * 22));
-  }
-
-  const result = card.querySelector<HTMLElement>('.cres-result')!;
-  if (jackpot) {
-    card.querySelector(`.tier-chip[data-name="${jackpot}"]`)!.classList.add('won');
-    result.innerHTML = `<span class="jp-won">${jackpot.toUpperCase()} JACKPOT</span><b>${fmt(award * bet())}</b>`;
-    audio.gong();
-    audio.winSting(3);
-    fx.coins(jackpot === 'Grand' ? 200 : 80);
-    stage.shake('big');
-    stage.celebrate(5);
-  } else {
-    result.textContent = `${charges} charge${charges === 1 ? '' : 's'}. The storm rests, this time.`;
-  }
-  const btn = card.querySelector<HTMLButtonElement>('[data-close]')!;
-  btn.hidden = false;
-  btn.focus();
-  await new Promise<void>((r) => btn.addEventListener('click', () => r(), { once: true }));
-  closeModal();
 }
 
 // ---- Info -----------------------------------------------------------------

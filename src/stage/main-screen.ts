@@ -25,6 +25,8 @@ export class MainScreen extends Container {
   private win: Text;
   private info: Text;
   private winGlow: Sprite;
+  private panel = new Container();
+  private panelContent = new Container();
 
   constructor() {
     super();
@@ -38,7 +40,8 @@ export class MainScreen extends Container {
 
     this.buildFrame();
     this.reels.position.set(WIN_X, WIN_Y);
-    this.content.addChild(this.frame, this.reels, this.tacks);
+    this.buildPanel();
+    this.content.addChild(this.frame, this.reels, this.panel, this.tacks);
     this.content.pivot.set(W / 2, WIN_Y + WINDOW_H / 2);
     this.content.position.set(W / 2, WIN_Y + WINDOW_H / 2);
     this.addChild(this.content);
@@ -136,6 +139,40 @@ export class MainScreen extends Container {
       brushText(46, '千の太鼓'),
     );
     this.frame.addChild(sign);
+  }
+
+  private buildPanel(): void {
+    const bg = new Graphics()
+      .roundRect(-4, -4, WINDOW_W + 8, WINDOW_H + 8, 12)
+      .fill(linear([[0, '#0c1640'], [0.6, '#060a22'], [1, '#02030c']]))
+      .stroke({ width: 3, fill: GOLD() });
+    const pattern = new TilingSprite({ texture: Texture.from(paintSeigaiha(80, 'rgba(111,195,255,.07)')), width: WINDOW_W, height: WINDOW_H });
+    this.panel.addChild(bg, pattern, this.panelContent);
+    this.panel.position.set(WIN_X, WIN_Y);
+    this.panel.visible = false;
+  }
+
+  /** Take over the reel window with a bonus panel; returns its empty content layer (932 x 540). */
+  openPanel(): Container {
+    this.panelContent.removeChildren().forEach((c) => c.destroy({ children: true }));
+    gsap.killTweensOf(this.panel);
+    this.panel.visible = true;
+    if (this.panel.alpha < 1) gsap.fromTo(this.panel, { alpha: this.panel.alpha }, { alpha: 1, duration: 0.35 });
+    return this.panelContent;
+  }
+
+  closePanel(): Promise<void> {
+    return new Promise((resolve) => {
+      gsap.to(this.panel, {
+        alpha: 0,
+        duration: 0.35,
+        onComplete: () => {
+          this.panel.visible = false;
+          this.panelContent.removeChildren().forEach((c) => c.destroy({ children: true }));
+          resolve();
+        },
+      });
+    });
   }
 
   setInfo(text: string): void {

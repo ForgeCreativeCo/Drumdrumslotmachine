@@ -97,6 +97,29 @@ for timing.
 - When a Wild lands, bachi strike it and a ripple runs across the reels.
 - At rest, scatters crackle and high symbols catch an occasional glint.
 
+### The Festival on the cabinet
+
+The bonus plays on the machine itself, with no pop-ups
+(`src/stage/summoning.ts`, `src/stage/festival-panels.ts`):
+
+1. **Arrival:** Raijin's bolts strike each scatter. A white-out thunderclap
+   relights every screen as a storm, and 雷神 rises in the drum ring.
+2. **The Summoning:** the rhythm lane takes over the reel window, and the
+   deck's big drum becomes the pad (centre = DON, rim = KA; keys F/J/D/K also
+   work). Drum Power builds on the top screen, with fireworks on perfect hits.
+3. **Drum Storm:** sparks from new wilds and 雷 fly up into the meter orbs,
+   and the Drum Power stays on the top screen.
+4. **Raijin's Crescendo:** the camera pulls back. Each charge is a bolt from
+   the sky, through its meter orb, down into the counter on the reels screen.
+   Each tier on the ladder and the matching top plaque light as they are
+   reached, and the Grand floods the cabinet gold.
+5. **Summary:** shown in the reel window. A second flash returns the cabinet
+   to the festival night.
+
+Cross-screen effects (bolts, flying sparks, coin showers, flashes) live on
+one layer above all three screens (`Stage.bolt`, `flyTo`, `coinShower`,
+`flash`, `goldFlood`).
+
 ### Adding painted backdrops
 
 Put `backdrop-festival.jpg` (and optionally `backdrop-storm.jpg`) in
@@ -128,7 +151,8 @@ modules.
 Vite + TypeScript, PixiJS 8 and pixi-filters for rendering, and GSAP for
 animation timing. The maths in `src/math/` has no dependencies.
 
-- The bonus dialogs and big-win overlays are still DOM for now.
+- The big-win overlay, the info page and the out-of-credits gift are still
+  DOM; everything else is drawn by the stage.
 - All sound (taiko, rim clicks, shime, kane, gong, thunder, koto stings and the
   festival groove) is synthesized live with Web Audio, so there are no audio
   assets.

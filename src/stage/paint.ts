@@ -566,3 +566,28 @@ export function paintShrine(w: number, h: number, color: string): HTMLCanvasElem
   ctx.fillRect(0, h * 0.94, w, h * 0.06);
   return c;
 }
+
+/** Oval gold koban coin. */
+export function paintKoban(): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(120, 70);
+  ctx.beginPath();
+  ctx.ellipse(60, 35, 56, 30, 0, 0, Math.PI * 2);
+  const g = ctx.createLinearGradient(0, 5, 0, 65);
+  g.addColorStop(0, '#fff3b0');
+  g.addColorStop(0.5, '#e0a93a');
+  g.addColorStop(1, '#8a5a10');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#6a4208';
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(110, 70, 8, .55)';
+  ctx.lineWidth = 2;
+  for (let x = 22; x <= 98; x += 8) {
+    ctx.beginPath();
+    ctx.moveTo(x, 18);
+    ctx.lineTo(x, 52);
+    ctx.stroke();
+  }
+  return c;
+}

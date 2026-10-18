@@ -225,3 +225,38 @@ export function bachi(): Graphics {
     .fill(linear([[0, '#e8c48a'], [0.5, '#b9864a'], [1, '#6a4420']], false))
     .stroke({ width: 2, color: 0x3a2008 });
 }
+
+/** Lacquered pill button with a gold edge, for in-cabinet prompts. */
+export class PlaqueButton extends Container {
+  private _enabled = true;
+
+  constructor(text: string, w: number, onTap: () => void, primary = true) {
+    super();
+    const h = 76;
+    const body = new Graphics()
+      .roundRect(-w / 2, -h / 2 + 6, w, h, h / 2)
+      .fill({ color: 0x000000, alpha: 0.5 })
+      .roundRect(-w / 2, -h / 2, w, h, h / 2)
+      .fill(primary ? linear([[0, '#ff6b4e'], [1, '#8a120c']]) : linear([[0, '#1c2a5a'], [1, '#070c24']]))
+      .stroke({ width: 4, fill: GOLD() })
+      .roundRect(-w / 2 + 10, -h / 2 + 6, w - 20, h * 0.36, h / 4)
+      .fill({ color: 0xffffff, alpha: 0.14 });
+    const label = new Text({
+      text,
+      style: { fontFamily: FONT.numbers, fontSize: 28, fill: primary ? '#ffffff' : '#ffe9a8', letterSpacing: 4, stroke: { color: '#2a0806', width: 4 } },
+      anchor: 0.5,
+    });
+    this.addChild(body, label);
+    this.eventMode = 'static';
+    this.cursor = 'pointer';
+    this.on('pointerdown', () => this._enabled && this.scale.set(0.95));
+    const up = () => this.scale.set(1);
+    this.on('pointerup', up).on('pointerupoutside', up);
+    this.on('pointertap', () => this._enabled && onTap());
+  }
+
+  set enabled(v: boolean) {
+    this._enabled = v;
+    this.alpha = v ? 1 : 0.4;
+  }
+}
