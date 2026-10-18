@@ -1,0 +1,21 @@
+{
+  "name": "taiko-thunder",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Taiko Thunder: a Japanese taiko-drum themed 243-ways slot machine with a rhythm-game bonus.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "sim": "vite-node scripts/sim.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vite-node": "^3.0.0",
+    "vitest": "^3.0.0"
+  }
+}
